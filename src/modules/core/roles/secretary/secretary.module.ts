@@ -47,6 +47,12 @@ import {
     SubjectsStubService,
     TeacherDistributionsStubService,
   ],
-  exports: [EnrollmentsService, EnrollmentDetailsService, EnrollmentStatesService, EnrollmentDetailStatesService],
+  exports: [
+    EnrollmentsService,
+    EnrollmentDetailsService,
+    EnrollmentStatesService,
+    EnrollmentDetailStatesService,
+    CoreCataloguesService,
+  ],
 })
 export class SecretaryModule {}

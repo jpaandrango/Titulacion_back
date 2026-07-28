@@ -28,7 +28,7 @@ export class CareersController {
 
   @ApiOperation({ summary: 'Find All Careers' })
   @Get()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.secretary)
   async findAll(@Query() params: FilterCareerDto): Promise<ResponseHttpInterface> {
     const response = await this.service.findAll(params);
 
@@ -42,13 +42,26 @@ export class CareersController {
 
   @ApiOperation({ summary: 'Find One Career' })
   @Get(':id')
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.secretary)
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<ResponseHttpInterface> {
     const response = await this.service.findOne(id);
 
     return {
       data: response,
       message: `Carrera`,
+      title: `Consultado`,
+    };
+  }
+
+  @ApiOperation({ summary: 'Find Subjects By Career' })
+  @Get(':id/subjects')
+  @Roles(RoleEnum.admin, RoleEnum.secretary)
+  async findSubjectsByCareer(@Param('id', ParseUUIDPipe) id: string): Promise<ResponseHttpInterface> {
+    const response = await this.service.findSubjectsByCareer(id);
+
+    return {
+      data: response,
+      message: `Asignaturas de la carrera`,
       title: `Consultado`,
     };
   }

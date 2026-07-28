@@ -40,4 +40,13 @@ export class CoreCataloguesService {
       },
     });
   }
+
+  /**
+   * Filtra por `type` (usado por el endpoint HTTP público del combo de catálogos:
+   * paralelo, jornada, tipo de matrícula, estado académico, período académico, etc.)
+   */
+  async findByType(type: string): Promise<CatalogueEntity[]> {
+    const all = await this.findCache();
+    return all.filter((item) => item.type === type && item.isVisible);
+  }
 }

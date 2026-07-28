@@ -100,7 +100,7 @@ export class EnrollmentsService {
     if (payload.parallel) enrollment.parallelId = payload.parallel.id;
     if (payload.type) enrollment.typeId = payload.type.id;
     if (payload.workday) enrollment.workdayId = payload.workday.id;
-    if (payload.academicPeriod) enrollment.date = payload.date;
+    if (payload.academicPeriod) enrollment.date = payload.date!;
     if (payload.observation) enrollment.observation = payload.observation;
 
     return await this.repository.save(enrollment);

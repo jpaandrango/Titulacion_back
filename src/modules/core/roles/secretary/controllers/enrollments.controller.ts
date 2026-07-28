@@ -17,7 +17,7 @@ export class EnrollmentsController {
   constructor(
     private readonly enrollmentsService: EnrollmentsService,
     private readonly enrollmentsDetailService: EnrollmentDetailsService,
-  ) {}
+  ) { }
 
   @ApiOperation({ summary: 'Create Enrollment' })
   @Post()
@@ -46,7 +46,7 @@ export class EnrollmentsController {
     };
   }
 
-  // Usado por el front: GET /careers/:careerId/enrollments (ver nota de migración de rutas)
+  // Usado por el front: GET /careers/:careerId/enrollments
   @ApiOperation({ summary: 'Find Enrollments By Career' })
   @Get('careers/:careerId')
   @HttpCode(HttpStatus.OK)

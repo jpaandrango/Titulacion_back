@@ -26,7 +26,7 @@ export class CareersService {
 
     QueryBuilderHelper.applySearch(query, 'career', this.searchableFields, params.search);
 
-    QueryBuilderHelper.applySorting(query, 'career', params.sort, params.order);
+    QueryBuilderHelper.applySorting(query, 'career', params.sort ?? 'code', params.order ?? 'ASC');
 
     if (params.page && params.limit)
       QueryBuilderHelper.applyPagination(query, params.page, params.limit);

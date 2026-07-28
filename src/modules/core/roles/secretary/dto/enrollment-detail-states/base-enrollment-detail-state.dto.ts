@@ -1,4 +1,5 @@
 import { IsDate, IsNotEmpty, IsOptional } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class BaseEnrollmentDetailStateDto {
   @IsNotEmpty()
@@ -11,6 +12,7 @@ export class BaseEnrollmentDetailStateDto {
   readonly userId: string;
 
   @IsOptional()
+  @Type(() => Date)
   @IsDate({ message: 'El campo date debe ser una fecha' })
   readonly date?: Date;
 
