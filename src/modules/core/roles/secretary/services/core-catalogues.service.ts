@@ -6,31 +6,19 @@ import { CoreRepositoryEnum } from '@modules/core/shared-core/enums';
 /**
  * Resuelve catálogos del esquema `core` (tabla `core.catalogues`).
  *
- * ⚠️ IMPORTANTE — por qué existe este servicio y no se usa `CataloguesService` de
- * `@modules/common/catalogue`: se verificó contra el backup real de la BD
- * (`backup_dev_yec_v2_2026_07_18_1.backup`) que las FK de `core.enrollments`,
+ * IMPORTANTE — por qué existe este servicio y no se usa `CataloguesService` de
+ * `@modules/common/catalogue`: se verificó que las FK de `core.enrollments`,
  * `core.enrollment_details`, `core.enrollment_states` y `core.enrollment_detail_states`
  * apuntan a `core.catalogues(id)`, NO a `common.catalogues(id)`. `CataloguesService`
- * (común) consulta `common.catalogues`, que solo contiene catálogos genéricos de
- * persona (sexo, tipo de sangre, estado civil, nacionalidad, etc.) — NO contiene
- * `enrollments_state`, `enrollments_type`, `parallel`, `workday` ni `academic_period`.
- * Usar `CataloguesService` aquí habría hecho fallar en runtime cada
- * approve/reject/enroll/revoke (el `.find()` nunca habría encontrado los catálogos).
- *
- * Mantiene la misma firma que `CataloguesService.findCache()` para que sea un
- * reemplazo directo dentro del módulo de Secretaría.
  */
 @Injectable()
 export class CoreCataloguesService {
   constructor(
     @Inject(CoreRepositoryEnum.coreCatalogueRepository)
     private readonly repository: Repository<CatalogueEntity>,
-  ) {}
+  ) { }
 
   async findCache(): Promise<CatalogueEntity[]> {
-    // TODO: si más roles empiezan a necesitar catálogos de 'core', vale la pena moverle
-    // el cacheo (cache-manager, igual que CataloguesService) a shared-core en vez de
-    // dejarlo solo aquí. Por ahora, scope mínimo para Secretaría.
     return await this.repository.find({
       select: ['id', 'code', 'name', 'type', 'isVisible', 'parentId', 'sort'],
       order: {
@@ -48,5 +36,14 @@ export class CoreCataloguesService {
   async findByType(type: string): Promise<CatalogueEntity[]> {
     const all = await this.findCache();
     return all.filter((item) => item.type === type && item.isVisible);
+  }
+
+  /**
+   * Busca un catálogo puntual por code + type (ej. el estado 'open'/'close' de
+   * SCHOOL_PERIODS_STATE, usado por SchoolPeriodsService.open()/close()).
+   */
+  async findByCode(code: string, type: string): Promise<CatalogueEntity | undefined> {
+    const all = await this.findCache();
+    return all.find((item) => item.code === code && item.type === type);
   }
 }

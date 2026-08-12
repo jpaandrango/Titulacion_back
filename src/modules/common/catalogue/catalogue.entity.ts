@@ -119,20 +119,4 @@ export class CatalogueEntity {
     comment: 'Tipo de menu',
   })
   type: string;
-
-  @Column({
-    name: 'id_temp',
-    type: 'bigint',
-    nullable: true,
-    comment: '',
-  })
-  idTemp: string;
-
-  @Column({
-    name: 'id_temp_parent',
-    type: 'bigint',
-    nullable: true,
-    comment: '',
-  })
-  idTempParent: string;
 }

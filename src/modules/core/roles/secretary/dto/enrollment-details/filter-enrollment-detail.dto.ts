@@ -4,7 +4,6 @@ import { OmitType } from '@nestjs/swagger';
 import { PaginationDto } from '@utils/pagination';
 import { minValidationOptions } from '@utils/dto-validation';
 
-// Ver nota equivalente en filter-enrollment.dto.ts — PrimeNG pagina desde 0, el
 // PaginationDto compartido exige page > 0.
 export class FilterEnrollmentsDetailDto extends OmitType(PaginationDto, ['page'] as const) {
   @Type(() => Number)

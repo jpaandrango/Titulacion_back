@@ -24,8 +24,9 @@ import { CareersService } from '@modules/core/roles/career-coordinator/services/
 @Auth()
 @Controller('core/career-coordinator/careers')
 export class CareersController {
-  constructor(private readonly service: CareersService) {}
+  constructor(private readonly service: CareersService) { }
 
+  // ─── Secretaría: @Roles ampliado a secretary (antes solo admin) + endpoint nuevo ──
   @ApiOperation({ summary: 'Find All Careers' })
   @Get()
   @Roles(RoleEnum.admin, RoleEnum.secretary)
@@ -66,6 +67,7 @@ export class CareersController {
     };
   }
 
+  // ─── Resto del CRUD — sin cambios, solo admin ─────────────
   @ApiOperation({ summary: 'Create Career' })
   @Post()
   @Roles(RoleEnum.admin)
@@ -90,7 +92,7 @@ export class CareersController {
 
     return {
       data: response,
-      message: `La carrera se actulizó correctamente`,
+      message: `La carrera se actualizó correctamente`,
       title: `Actualizado`,
     };
   }

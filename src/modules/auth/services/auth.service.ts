@@ -125,6 +125,8 @@ export class AuthService {
         nationality: true,
         bloodType: true,
         sex: true,
+        student: true,
+        teacher: true,
       },
     });
 

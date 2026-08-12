@@ -9,22 +9,14 @@ import { ResponseHttpInterface } from '@utils/interfaces';
  * Expone por HTTP los catálogos de `core.catalogues` (paralelo, jornada, tipo de
  * matrícula, estado académico, período académico, estado de matrícula, etc.).
  *
- * ⚠️ Vive temporalmente dentro del módulo de Secretaría porque es donde ya existía
- * `CoreCataloguesService` (para uso interno del propio módulo). Es un endpoint
- * genérico de catálogos de 'core', no exclusivo de Secretaría — si otros roles lo
+ * Es un endpoint genérico de catálogos de 'core', no exclusivo de Secretaría — si otros roles lo
  * empiezan a necesitar, valdría la pena moverlo a `shared-core`.
- *
- * Contrato idéntico al que ya espera el front (`CataloguesHttpService`):
- * GET /core/catalogues?type=academic_period → { data: [...] }
- * Los valores de `type` que acepta son las KEYS (no los values) de
- * CatalogueCoreTypeEnum — el front ya los manda en ese formato exacto
- * (ver EnrollmentCatalogueTypeEnum / CatalogueTypeEnum del front), coincide 1:1.
  */
 @ApiTags('Core Catalogues')
 @Auth()
 @Controller('core/catalogues')
 export class CoreCataloguesController {
-  constructor(private readonly coreCataloguesService: CoreCataloguesService) {}
+  constructor(private readonly coreCataloguesService: CoreCataloguesService) { }
 
   @ApiOperation({ summary: 'Find Core Catalogues By Type' })
   @Get()

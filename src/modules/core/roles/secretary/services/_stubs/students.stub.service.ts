@@ -4,23 +4,14 @@ import { StudentEntity } from '@modules/core/entities';
 import { CoreRepositoryEnum } from '@modules/core/shared-core/enums';
 
 /**
- * ⚠️ STUB — pertenece al módulo de "Estudiantes" (students), no a Secretaría.
- *
- * calculateSocioeconomicFormCategory / calculateSocioeconomicFormPercentage son funciones
- * puras (sin BD) portadas TAL CUAL del backend viejo — no requieren cambios.
- *
- * calculateSocioeconomicFormScore SÍ requiere leer TODO el formulario socioeconómico del
- * estudiante (información familiar, vivienda, ingresos, discapacidad, etc. — decenas de
- * campos de InformationStudentEntity) y aplicar la fórmula de puntaje del backend viejo.
- * Esa lógica pertenece al módulo de Estudiantes y no se portó aquí: se devuelve 0 con un
- * TODO explícito para que se conecte al StudentsService real cuando exista.
+ * STUB — pertenece al módulo de "Estudiantes" (students), no a Secretaría.
  */
 @Injectable()
 export class StudentsStubService {
   constructor(
     @Inject(CoreRepositoryEnum.studentRepository)
     private readonly repository: Repository<StudentEntity>,
-  ) {}
+  ) { }
 
   async calculateSocioeconomicFormScore(studentId: string): Promise<number> {
     // TODO: portar la fórmula real desde StudentsService (backend viejo, ~370 líneas)

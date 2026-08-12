@@ -4,7 +4,7 @@ import { SubjectEntity } from '@modules/core/entities';
 import { CoreRepositoryEnum } from '@modules/core/shared-core/enums';
 
 /**
- * ⚠️ STUB — pertenece al módulo de "Asignaturas" (subjects), no a Secretaría.
+ * STUB — pertenece al módulo de "Asignaturas" (subjects), no a Secretaría.
  * Implementa SOLO findOne, que es lo que EnrollmentsService necesita.
  * Reemplazar por el SubjectsService oficial cuando exista.
  */
@@ -13,7 +13,7 @@ export class SubjectsStubService {
   constructor(
     @Inject(CoreRepositoryEnum.subjectRepository)
     private readonly repository: Repository<SubjectEntity>,
-  ) {}
+  ) { }
 
   async findOne(id: string): Promise<SubjectEntity> {
     const subject = await this.repository.findOne({

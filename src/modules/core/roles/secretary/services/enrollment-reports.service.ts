@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Response } from 'express';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
 import * as qr from 'qrcode';
 import { join } from 'path';
 import * as fs from 'fs';
+import { EnrollmentEntity } from '@modules/core/entities';
 import { EnrollmentSqlService } from '@modules/core/roles/secretary/services/enrollment-sql.service';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -12,21 +14,14 @@ const { PDFDocument } = require('pdfkit-table-ts');
 
 /**
  * Reportes de matrícula (Secretaría).
- *
- * ⚠️ NOTA: solo se portaron los 4 reportes que el front de Secretaría consume
- * (ver EnrollmentService del front): certificado, matriculados por carrera,
- * matriculados por período lectivo y asignaturas por período lectivo.
- * El backend viejo tenía además "generateEnrollmentApplication" y
- * "generateAcademicRecordByStudent" (récord académico), que no se portaron
- * porque no forman parte de este módulo y dependen de CareersService (otro rol).
- *
- * ⚠️ Dependencias nuevas agregadas a package.json: "pdfkit-table-ts" y "qrcode".
- * Ejecutar `npm install` tras aplicar este cambio.
- */
+ *solo se portaron los 4 reportes que el front de Secretaría consume
+ * certificado, matriculados por carrera, matriculados por período lectivo y asignaturas por período lectivo.
+  */
 @Injectable()
 export class EnrollmentReportsService {
   private readonly logger = new Logger(EnrollmentReportsService.name);
-  private background = join(process.cwd(), 'storage/resources/reports/layouts/background_certificate.png');
+  // private background = join(process.cwd(), 'storage/resources/reports/layouts/background_certificate.png');
+  private background = join(process.cwd(), 'storage/resources/reports/layouts/background_v.png');
   private outputDir = join(process.cwd(), 'storage/private/uploads/reports/enrollments');
 
   constructor(private readonly enrollmentSqlService: EnrollmentSqlService) {
@@ -35,7 +30,8 @@ export class EnrollmentReportsService {
     }
   }
 
-  async generateEnrollmentCertificate(res: any, id: string) {
+  // ─── Certificado de matrícula (PDF, armado en memoria) ─────────────────────────
+  async generateEnrollmentCertificate(res: Response, id: string) {
     const enrollment = await this.enrollmentSqlService.findEnrollmentCertificateByEnrollment(id);
 
     if (!enrollment) {
@@ -47,15 +43,10 @@ export class EnrollmentReportsService {
 
     try {
       // Se arma el PDF COMPLETO en memoria (nunca se conecta el doc directo a `res`).
-      // Esto evita por completo la categoría de bugs de streaming que veníamos
-      // arrastrando: pdfkit-table-ts sigue emitiendo datos de forma asíncrona incluso
-      // después de que la petición HTTP ya se dio por terminada, y eso chocaba con el
-      // ciclo de vida de NestJS (ERR_STREAM_WRITE_AFTER_END, luego ERR_HTTP_HEADERS_SENT
-      // al intentar responder dos veces). Con este patrón, `res` no se toca para nada
-      // hasta que el PDF esté 100% listo y validado en memoria.
       pdfBuffer = await this.buildCertificatePdf(enrollment);
     } catch (error) {
-      this.logger.error(`Error generando certificado de matrícula ${id}: ${error?.message ?? error}`, error?.stack);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Error generando certificado de matrícula ${id}: ${err.message}`, err.stack);
       res.status(500).json({ error: 'Error', message: 'No se pudo generar el certificado de matrícula' });
       return;
     }
@@ -66,7 +57,7 @@ export class EnrollmentReportsService {
     res.end(pdfBuffer);
   }
 
-  private buildCertificatePdf(enrollment: any): Promise<Buffer> {
+  private buildCertificatePdf(enrollment: EnrollmentEntity): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
@@ -86,13 +77,14 @@ export class EnrollmentReportsService {
           try {
             doc.end();
           } catch {
-            // ya podría estar cerrado, ignorar
           }
         });
     });
   }
 
-  private async drawCertificate(doc: any, enrollment: any): Promise<void> {
+  // 'doc' queda como `any` a propósito: pdfkit-table-ts no trae tipos propios de
+  // TypeScript (por eso se importa con require() más arriba).
+  private async drawCertificate(doc: any, enrollment: EnrollmentEntity): Promise<void> {
     const textX = 50;
     const textY = 120;
 
@@ -130,9 +122,9 @@ export class EnrollmentReportsService {
     });
     doc.moveDown(2);
 
-    const rows: any[] = [];
+    const rows: string[][] = [];
 
-    enrollment.enrollmentDetails.forEach((enrollmentDetail: any) => {
+    enrollment.enrollmentDetails.forEach((enrollmentDetail) => {
       rows.push([
         enrollmentDetail.subject.code,
         enrollmentDetail.subject.name,
@@ -173,6 +165,7 @@ export class EnrollmentReportsService {
       });
   }
 
+  // ─── Reportes XLSX ────────────────────────────────────────────────────────────
   async generateEnrollmentsByCareer(careerId: string, schoolPeriodId: string): Promise<string> {
     const data = await this.enrollmentSqlService.findEnrollmentsByCareer(careerId, schoolPeriodId);
     return this.writeXlsx(data);
@@ -188,7 +181,7 @@ export class EnrollmentReportsService {
     return this.writeXlsx(data);
   }
 
-  private writeXlsx(data: any[]): string {
+  private writeXlsx(data: Record<string, unknown>[]): string {
     const newWorkbook = XLSX.utils.book_new();
     const newSheet = XLSX.utils.json_to_sheet(data);
     XLSX.utils.book_append_sheet(newWorkbook, newSheet, 'Estudiantes');

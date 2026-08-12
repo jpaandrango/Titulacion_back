@@ -1,3 +1,3 @@
-import { BaseEnrollmentDetailDto } from './base-enrollment-detail.dto';
+import { EnrollmentDetailDto } from './enrollment-detail.dto';
 
-export class CreateEnrollmentsDetailDto extends BaseEnrollmentDetailDto {}
+export class CreateEnrollmentsDetailDto extends EnrollmentDetailDto { }

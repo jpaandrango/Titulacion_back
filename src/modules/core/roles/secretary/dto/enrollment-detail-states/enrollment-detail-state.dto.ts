@@ -1,9 +1,9 @@
 import { IsDate, IsNotEmpty, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class BaseEnrollmentStateDto {
+export class EnrollmentDetailStateDto {
   @IsNotEmpty()
-  readonly enrollmentId: string;
+  readonly enrollmentDetailId: string;
 
   @IsNotEmpty()
   readonly stateId: string;

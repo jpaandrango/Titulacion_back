@@ -36,6 +36,7 @@ export class DpaService {
       order: { name: 'asc' },
     });
 
+    console.log(items);
     await this.cacheManager.set(CacheEnum.dpa, items);
 
     return items;

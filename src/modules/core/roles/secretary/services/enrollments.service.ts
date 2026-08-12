@@ -7,8 +7,8 @@ import { EnrollmentStatesService } from '@modules/core/roles/secretary/services/
 import { EnrollmentDetailsService } from '@modules/core/roles/secretary/services/enrollment-details.service';
 import { EnrollmentDetailStatesService } from '@modules/core/roles/secretary/services/enrollment-detail-states.service';
 import { CoreCataloguesService } from '@modules/core/roles/secretary/services/core-catalogues.service';
-import { SchoolPeriodsStubService } from '@modules/core/roles/secretary/services/_stubs/school-periods.stub.service';
-import { CareerParallelsStubService } from '@modules/core/roles/secretary/services/_stubs/career-parallels.stub.service';
+import { SchoolPeriodsService } from '@modules/core/roles/secretary/services/school-periods.service';
+import { CareerParallelsService } from '@modules/core/roles/secretary/services/career-parallels.service';
 import { StudentsStubService } from '@modules/core/roles/secretary/services/_stubs/students.stub.service';
 import { SubjectsStubService } from '@modules/core/roles/secretary/services/_stubs/subjects.stub.service';
 import {
@@ -19,7 +19,6 @@ import {
   CoreRepositoryEnum,
 } from '@modules/core/shared-core/enums';
 import { ServiceResponseHttpInterface } from '@utils/interfaces';
-import { PaginationDto } from '@utils/pagination';
 import { isAfter, isBefore } from 'date-fns';
 import { join } from 'path';
 import * as fs from 'fs';
@@ -32,14 +31,15 @@ export class EnrollmentsService {
     private readonly enrollmentDetailsService: EnrollmentDetailsService,
     private readonly enrollmentDetailStatesService: EnrollmentDetailStatesService,
     private readonly cataloguesService: CoreCataloguesService,
-    private readonly schoolPeriodsService: SchoolPeriodsStubService,
-    private readonly careerParallelsService: CareerParallelsStubService,
+    private readonly schoolPeriodsService: SchoolPeriodsService,
+    private readonly careerParallelsService: CareerParallelsService,
     private readonly studentsService: StudentsStubService,
     private readonly subjectsService: SubjectsStubService,
-  ) {}
+  ) { }
 
+  // ─── CRUD ───────────────────────────────────────────────────────────────────
   async create(payload: CreateEnrollmentDto): Promise<EnrollmentEntity> {
-    const newEnrollment = this.repository.create(payload as any) as unknown as EnrollmentEntity;
+    const newEnrollment = this.repository.create(payload);
     return await this.repository.save(newEnrollment);
   }
 
@@ -182,10 +182,11 @@ export class EnrollmentsService {
       search = search.trim();
       page = 0;
 
+      // Búsqueda global para que encuentre al estudiante sin importar en qué período está.
       where.push(
-        { schoolPeriodId: params.schoolPeriodId, student: { user: { identification: ILike(`%${search}%`) } } },
-        { schoolPeriodId: params.schoolPeriodId, student: { user: { name: ILike(`%${search}%`) } } },
-        { schoolPeriodId: params.schoolPeriodId, student: { user: { lastname: ILike(`%${search}%`) } } },
+        { careerId, student: { user: { identification: ILike(`%${search}%`) } } },
+        { careerId, student: { user: { name: ILike(`%${search}%`) } } },
+        { careerId, student: { user: { lastname: ILike(`%${search}%`) } } },
       );
     } else {
       if (params.academicPeriodId) {
@@ -222,6 +223,7 @@ export class EnrollmentsService {
     const response = await this.repository.findAndCount({
       relations: {
         career: true,
+        schoolPeriod: true,
         academicPeriod: true,
         parallel: true,
         enrollmentStates: { state: true },
@@ -242,20 +244,15 @@ export class EnrollmentsService {
   }
 
   private getOffset(limit: number, page: number): number {
-    // PaginationDto.getOffset() ya no existe en el proyecto del tutor (se reemplazó por
-    // QueryBuilderHelper, pensado para búsquedas simples de un solo campo). Nuestros filtros
-    // usan condiciones OR sobre relaciones (student.user.*), así que mantenemos el cálculo
-    // de offset original en vez de migrar todo a QueryBuilder.
     const safePage = !page || page < 1 ? 1 : page;
     return (safePage - 1) * (limit || 10);
   }
 
+  // ─── Consultas para otros roles (student / teacher) y reportes ────────────────
   async findEnrollmentsByCareer(careerId: string, params?: FilterEnrollmentDto): Promise<ServiceResponseHttpInterface> {
     if (params && params.limit > 0 && params.page >= 0) {
       return await this.paginateAndFilterByCareer(careerId, params);
     }
-    // Front actual siempre manda limit/page (ver EnrollmentService.findEnrollmentsByCareer), pero
-    // dejamos un fallback "todos" por consistencia con el resto de findXByY del proyecto viejo.
     return await this.paginateAndFilterByCareer(careerId, { ...params, limit: 10, page: 0 } as FilterEnrollmentDto);
   }
 
@@ -285,7 +282,7 @@ export class EnrollmentsService {
     const openSchoolPeriod = await this.schoolPeriodsService.findOpenSchoolPeriod();
 
     if (!openSchoolPeriod) {
-      throw new NotFoundException('No hay un periodo lectivo abierto (SchoolPeriodsStubService)');
+      throw new NotFoundException('No hay un periodo lectivo abierto');
     }
 
     return await this.repository.findOne({
@@ -302,11 +299,11 @@ export class EnrollmentsService {
   }
 
   async findEnrollmentSubjectsByStudent(studentId: string, schoolPeriodId: string, careerId: string): Promise<EnrollmentDetailEntity[]> {
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = (await this.cataloguesService.findCache());
 
     const enrolledState = catalogues.find(
       (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.ENROLLED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-    );
+    )!;
 
     const enrollment = await this.repository.findOne({
       relations: {
@@ -336,6 +333,7 @@ export class EnrollmentsService {
     return [];
   }
 
+  // ─── Flujo de solicitud (registro de matrícula desde cero) ────────────────────
   async sendRegistration(userId: string, payload: any): Promise<EnrollmentEntity> {
     try {
       const filePath = join(process.cwd(), 'log-registration.txt');
@@ -345,7 +343,8 @@ export class EnrollmentsService {
         }
       });
     } catch (error) {
-      throw new Error(`Error appending to file: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      throw new Error(`Error appending to file: ${err.message}`);
     }
 
     let enrollment = await this.repository.findOne({
@@ -394,12 +393,12 @@ export class EnrollmentsService {
 
     enrollment = await this.repository.save(enrollment);
 
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = (await this.cataloguesService.findCache());
 
     if (!enrollment.enrollmentStates || enrollment.enrollmentStates?.length === 0) {
       const registeredState = catalogues.find(
         (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REGISTERED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-      );
+      )!;
 
       await this.enrollmentsStateService.create({
         enrollmentId: enrollment.id,
@@ -433,7 +432,7 @@ export class EnrollmentsService {
 
       const registeredState = catalogues.find(
         (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REGISTERED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-      );
+      )!;
 
       await this.enrollmentDetailStatesService.create({
         enrollmentDetailId: enrollmentDetailCreated.id,
@@ -456,7 +455,7 @@ export class EnrollmentsService {
     let prerequisites = '';
     let namePrerequisite = '';
 
-    for (const subjectPrerequisite of (subject as any).subjectPrerequisites ?? []) {
+    for (const subjectPrerequisite of subject.subjectPrerequisites ?? []) {
       namePrerequisite = `(${subjectPrerequisite.requirement.code}) ${subjectPrerequisite.requirement.name}`;
 
       for (const enrollmentDetail of enrollmentDetails) {
@@ -501,11 +500,11 @@ export class EnrollmentsService {
 
     await this.enrollmentsStateService.removeAll(enrollment.enrollmentStates);
 
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = (await this.cataloguesService.findCache());
 
     const registeredState = catalogues.find(
       (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REQUEST_SENT && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-    );
+    )!;
 
     await this.enrollmentsStateService.create({
       enrollmentId: enrollment.id,
@@ -518,13 +517,13 @@ export class EnrollmentsService {
     for (const item of enrollment.enrollmentDetails) {
       const itemState = catalogues.find(
         (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REQUEST_SENT && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-      );
+      )!;
 
       await this.enrollmentDetailStatesService.removeAll(item.enrollmentDetailStates);
 
       item.type = await this.getType(payload.schoolPeriod);
 
-      await this.enrollmentDetailsService.update(item.id, item as any);
+      await this.enrollmentDetailsService.update(item.id, item);
 
       await this.enrollmentDetailStatesService.create({
         enrollmentDetailId: item.id,
@@ -538,6 +537,7 @@ export class EnrollmentsService {
     return enrollment;
   }
 
+  // ─── Acciones de estado (registrada → aprobada → matriculada / rechazada / anulada) ──
   async approve(id: string, userId: string, payload: UpdateEnrollmentDto): Promise<EnrollmentEntity> {
     const enrollment = await this.repository.findOne({
       relations: { enrollmentDetails: { enrollmentDetailStates: true }, enrollmentStates: { state: true } },
@@ -548,11 +548,11 @@ export class EnrollmentsService {
       throw new NotFoundException('Matrícula no encontrada');
     }
 
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = (await this.cataloguesService.findCache());
 
     const approvedState = catalogues.find(
       (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.APPROVED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-    );
+    )!;
 
     await this.enrollmentsStateService.removeAll(enrollment.enrollmentStates);
 
@@ -567,7 +567,7 @@ export class EnrollmentsService {
     for (const item of enrollment.enrollmentDetails) {
       const itemState = catalogues.find(
         (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.APPROVED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-      );
+      )!;
 
       await this.enrollmentDetailStatesService.removeAll(item.enrollmentDetailStates);
 
@@ -593,11 +593,11 @@ export class EnrollmentsService {
       throw new NotFoundException('Matrícula no encontrada');
     }
 
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = (await this.cataloguesService.findCache());
 
     const rejectedState = catalogues.find(
       (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REJECTED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-    );
+    )!;
 
     await this.enrollmentsStateService.removeAll(enrollment.enrollmentStates);
 
@@ -612,7 +612,7 @@ export class EnrollmentsService {
     for (const item of enrollment.enrollmentDetails) {
       const itemState = catalogues.find(
         (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REJECTED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-      );
+      )!;
 
       await this.enrollmentDetailStatesService.removeAll(item.enrollmentDetailStates);
 
@@ -653,11 +653,11 @@ export class EnrollmentsService {
 
     await this.enrollmentsStateService.removeAll(enrollment.enrollmentStates);
 
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = (await this.cataloguesService.findCache());
 
     const enrolledState = catalogues.find(
       (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.ENROLLED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-    );
+    )!;
 
     await this.enrollmentsStateService.create({
       enrollmentId: id,
@@ -670,10 +670,10 @@ export class EnrollmentsService {
     for (const item of enrollment.enrollmentDetails) {
       const itemState = catalogues.find(
         (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.ENROLLED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-      );
+      )!;
 
       item.date = new Date();
-      await this.enrollmentDetailsService.update(item.id, item as any);
+      await this.enrollmentDetailsService.update(item.id, item);
 
       await this.enrollmentDetailStatesService.removeAll(item.enrollmentDetailStates);
 
@@ -699,11 +699,11 @@ export class EnrollmentsService {
       throw new NotFoundException('Matrícula no encontrada');
     }
 
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = (await this.cataloguesService.findCache());
 
     const revokedState = catalogues.find(
       (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REVOKED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-    );
+    )!;
 
     await this.enrollmentsStateService.removeAll(enrollment.enrollmentStates);
 
@@ -718,7 +718,7 @@ export class EnrollmentsService {
     for (const item of enrollment.enrollmentDetails) {
       const itemState = catalogues.find(
         (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REVOKED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-      );
+      )!;
 
       await this.enrollmentDetailStatesService.removeAll(item.enrollmentDetailStates);
 
@@ -734,6 +734,7 @@ export class EnrollmentsService {
     return enrollment;
   }
 
+  // ─── Helpers internos ─────────────────────────────────────────────────────────
   async findTotalEnrollments(
     enrollmentId: string | undefined,
     careerId: string,
@@ -742,7 +743,7 @@ export class EnrollmentsService {
     workdayId: string,
     academicPeriodId: string,
   ): Promise<number> {
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = (await this.cataloguesService.findCache());
 
     const states = catalogues.filter(
       (item: any) => item.code != CatalogueEnrollmentStateEnum.REVOKED && item.type === CatalogueCoreTypeEnum.enrollments_state,
@@ -783,7 +784,7 @@ export class EnrollmentsService {
   private async getType(schoolPeriod: SchoolPeriodEntity) {
     const currentDate = new Date();
 
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = await this.cataloguesService.findCache();
 
     let codeType = CatalogueSchoolPeriodTypeEnum.ESPECIAL;
 
@@ -802,9 +803,10 @@ export class EnrollmentsService {
       codeType = CatalogueSchoolPeriodTypeEnum.ESPECIAL;
     }
 
-    return catalogues.find((type) => type.code === codeType && type.type === CatalogueCoreTypeEnum.enrollments_type);
+    return catalogues.find((type) => type.code === codeType && type.type === CatalogueCoreTypeEnum.enrollments_type)!;
   }
 
+  // ─── Más consultas cruzadas (Teacher / certificado) ────────────────────────────
   async findEnrollmentSubjectsByTeacher(teacherId: string, params: any): Promise<EnrollmentEntity[]> {
     return await this.repository.find({
       relations: { enrollmentDetails: { subject: true } },
@@ -835,6 +837,7 @@ export class EnrollmentsService {
     });
   }
 
+  // ─── Otros ──────────────────────────────────────────────────────────────────
   async recalculateSocioeconomicForm(): Promise<EnrollmentEntity> {
     const enrollments = await this.repository.find({
       relations: { enrollmentStates: { state: true }, enrollmentDetails: true },
@@ -857,12 +860,12 @@ export class EnrollmentsService {
   }
 
   async findLastEnrollmentDetailByStudent(studentId: string, careerId: string): Promise<string> {
-    const catalogues = (await this.cataloguesService.findCache()) as any[];
+    const catalogues = (await this.cataloguesService.findCache());
 
     const approvedState = catalogues.find(
       (catalogue) =>
         catalogue.code === CatalogueEnrollmentsAcademicStateEnum.APPROVED && catalogue.type === CatalogueCoreTypeEnum.enrollments_academic_state,
-    );
+    )!;
 
     const enrollments = await this.repository.find({
       relations: {

@@ -19,6 +19,7 @@ export class EnrollmentsController {
     private readonly enrollmentsDetailService: EnrollmentDetailsService,
   ) { }
 
+  // ─── CRUD ───────────────────────────────────────────────────────────────────
   @ApiOperation({ summary: 'Create Enrollment' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -40,7 +41,7 @@ export class EnrollmentsController {
 
     return {
       data: serviceResponse.data,
-      pagination: serviceResponse.pagination as any,
+      pagination: serviceResponse.pagination,
       message: 'Buscar matrículas',
       title: 'Success',
     };
@@ -55,7 +56,7 @@ export class EnrollmentsController {
 
     return {
       data: serviceResponse.data,
-      pagination: serviceResponse.pagination as any,
+      pagination: serviceResponse.pagination,
       message: 'Buscar matrículas por carrera',
       title: 'Success',
     };
@@ -112,6 +113,7 @@ export class EnrollmentsController {
     };
   }
 
+  // ─── Asignaturas de la matrícula ──────────────────────────────────────────────
   @ApiOperation({ summary: 'Find Enrollment Details By Enrollment' })
   @Get(':id/enrollment-details')
   @HttpCode(HttpStatus.OK)
@@ -125,6 +127,7 @@ export class EnrollmentsController {
     };
   }
 
+  // ─── Flujo de solicitud (registro → envío) ────────────────────────────────────
   @ApiOperation({ summary: 'Send Registration' })
   @Post('send-registration')
   @HttpCode(HttpStatus.CREATED)
@@ -151,6 +154,7 @@ export class EnrollmentsController {
     };
   }
 
+  // ─── Acciones de estado (registrada → aprobada → matriculada / rechazada / anulada) ──
   @ApiOperation({ summary: 'Approve Enrollment' })
   @Patch(':id/approve')
   @HttpCode(HttpStatus.CREATED)
@@ -199,6 +203,7 @@ export class EnrollmentsController {
     };
   }
 
+  // ─── Otros ──────────────────────────────────────────────────────────────────
   @ApiOperation({ summary: 'Recalculate Socioeconomic Forms' })
   @Patch('recalculate-socioeconomic-forms')
   @HttpCode(HttpStatus.OK)

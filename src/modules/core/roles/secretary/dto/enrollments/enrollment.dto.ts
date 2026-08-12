@@ -4,7 +4,7 @@ import { StudentEntity, CatalogueEntity, SchoolPeriodEntity, CareerEntity } from
 import { CreateEnrollmentsDetailDto } from '@modules/core/roles/secretary/dto';
 import { isStringValidationOptions } from '@utils/dto-validation';
 
-export class BaseEnrollmentDto {
+export class EnrollmentDto {
   @IsNotEmpty()
   readonly student: StudentEntity;
 

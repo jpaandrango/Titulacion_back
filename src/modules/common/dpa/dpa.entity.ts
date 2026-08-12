@@ -131,19 +131,4 @@ export class DpaEntity {
     comment: 'Rural o Urbana',
   })
   zoneType: string;
-
-  @Column({
-    name: 'id_temp',
-    type: 'bigint',
-    comment: '',
-  })
-  idTemp: string;
-
-  @Column({
-    name: 'id_temp_parent',
-    type: 'bigint',
-    nullable: true,
-    comment: '',
-  })
-  idTempParent: string;
 }

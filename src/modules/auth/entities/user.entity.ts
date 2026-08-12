@@ -10,6 +10,7 @@ import {
   ManyToMany,
   ManyToOne,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -19,6 +20,12 @@ import { CatalogueEntity } from '@modules/common/catalogue/catalogue.entity';
 import { SecurityQuestionEntity } from '@auth/entities/security-question.entity';
 import { resolveMaxAttempts } from '@auth/constants';
 import { EmailVerificationsEntity } from '@auth/entities/email-verifications.entity';
+import {
+  OriginAddressEntity,
+  ResidenceAddressEntity,
+  StudentEntity,
+  TeacherEntity,
+} from '@modules/core/entities';
 
 @Entity('users', { schema: 'auth' })
 export class UserEntity {
@@ -57,6 +64,18 @@ export class UserEntity {
 
   @OneToMany(() => EmailVerificationsEntity, (entity) => entity.user)
   emailVerifications: EmailVerificationsEntity[];
+
+  @OneToOne(() => OriginAddressEntity, (entity) => entity.user)
+  originAddress: OriginAddressEntity;
+
+  @OneToOne(() => ResidenceAddressEntity, (entity) => entity.user)
+  residenceAddress: ResidenceAddressEntity;
+
+  @OneToOne(() => StudentEntity, (entity) => entity.user)
+  student: StudentEntity;
+
+  @OneToOne(() => TeacherEntity, (entity) => entity.user)
+  teacher: StudentEntity;
 
   /** Foreign Keys **/
   @ManyToOne(() => CatalogueEntity, { nullable: true })
@@ -136,7 +155,7 @@ export class UserEntity {
   })
   sexId: string;
 
-  /** Fields **/
+  /** Columns **/
   @Column({
     name: 'refresh_token',
     type: 'varchar',
@@ -295,14 +314,6 @@ export class UserEntity {
     comment: 'true: tiene discapacidad y False:no',
   })
   hasDisability: boolean;
-
-  @Column({
-    name: 'id_temp',
-    type: 'bigint',
-    nullable: true,
-    comment: 'Codigo de la tabla migrada',
-  })
-  idTemp: number;
 
   /** Before Actions **/
   @BeforeInsert()

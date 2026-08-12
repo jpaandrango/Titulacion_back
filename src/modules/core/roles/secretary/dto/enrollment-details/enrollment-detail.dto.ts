@@ -1,9 +1,9 @@
 import { IsDate, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { EnrollmentEntity, CatalogueEntity, SubjectEntity } from '@modules/core/entities';
+import { CatalogueEntity, SubjectEntity } from '@modules/core/entities';
 import { isStringValidationOptions, maxValidationOptions, minValidationOptions } from '@utils/dto-validation';
 
-export class BaseEnrollmentDetailDto {
+export class EnrollmentDetailDto {
   @IsOptional()
   readonly academicState: CatalogueEntity;
 
