@@ -1,4 +1,14 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, JoinColumn, ManyToOne, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  DeleteDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { CatalogueEntity, StudentEntity } from '@modules/core/entities';
 
 @Entity('information_students', { schema: 'core' })
@@ -64,7 +74,12 @@ export class InformationStudentEntity {
   @ManyToOne(() => CatalogueEntity, { nullable: true })
   @JoinColumn({ name: 'foreign_language_name_id' })
   foreignLanguageName: CatalogueEntity;
-  @Column({ type: 'uuid', name: 'foreign_language_name_id', nullable: true, comment: 'Ingles, Chino Mandarian, etc' })
+  @Column({
+    type: 'uuid',
+    name: 'foreign_language_name_id',
+    nullable: true,
+    comment: 'Ingles, Chino Mandarian, etc',
+  })
   foreignLanguageNameId: string;
 
   @ManyToOne(() => CatalogueEntity, { nullable: true })
@@ -78,7 +93,12 @@ export class InformationStudentEntity {
   })
   indigenousNationalityId: string;
 
-  @Column({ type: 'boolean', name: 'is_ancestral_language', default: false, comment: 'Lengua Ancestral,true = si y false = no' })
+  @Column({
+    type: 'boolean',
+    name: 'is_ancestral_language',
+    default: false,
+    comment: 'Lengua Ancestral,true = si y false = no',
+  })
   isAncestralLanguage: boolean;
 
   @Column({
@@ -89,26 +109,60 @@ export class InformationStudentEntity {
   })
   isCatastrophicIllness: boolean;
 
-  //ejemplo de cambio a boolean
-  @Column({ type: 'boolean', name: 'is_disability', default: false, comment: 'Tiene disacapasidad, true = si y false = no' })
+  @Column({
+    type: 'boolean',
+    name: 'is_disability',
+    default: false,
+    comment: 'Tiene disacapasidad, true = si y false = no',
+  })
   isDisability: boolean;
 
-  @Column({ type: 'boolean', name: 'is_foreign_language', default: false, comment: 'Perdida de gratuidad??,true = si y false = no' })
+  @Column({
+    type: 'boolean',
+    name: 'is_foreign_language',
+    default: false,
+    comment: 'Perdida de gratuidad??,true = si y false = no',
+  })
   isForeignLanguage: boolean;
 
-  @Column({ type: 'boolean', name: 'is_has_children', default: false, comment: 'Tiene Hijos,true = si y false = no' })
+  @Column({
+    type: 'boolean',
+    name: 'is_has_children',
+    default: false,
+    comment: 'Tiene Hijos,true = si y false = no',
+  })
   isHasChildren: boolean;
 
-  @Column({ type: 'boolean', name: 'is_house_head', default: false, comment: 'Es Jefe de Hogar,true = si y false = no' })
+  @Column({
+    type: 'boolean',
+    name: 'is_house_head',
+    default: false,
+    comment: 'Es Jefe de Hogar,true = si y false = no',
+  })
   isHouseHead: boolean;
 
-  @Column({ type: 'boolean', name: 'is_private_security', default: false, comment: 'Es Jefe de Hogar?? , seguro privado ,true = si y false = no' })
+  @Column({
+    type: 'boolean',
+    name: 'is_private_security',
+    default: false,
+    comment: 'Es Jefe de Hogar?? , seguro privado ,true = si y false = no',
+  })
   isPrivateSecurity: boolean;
 
-  @Column({ type: 'boolean', name: 'is_social_security', default: false, comment: 'Es Jefe de Hogar??,true = si y false = no' })
+  @Column({
+    type: 'boolean',
+    name: 'is_social_security',
+    default: false,
+    comment: 'Es Jefe de Hogar??,true = si y false = no',
+  })
   isSocialSecurity: boolean;
 
-  @Column({ type: 'boolean', name: 'is_work', default: false, comment: 'El estudiante trabaja, true = si y false = no' })
+  @Column({
+    type: 'boolean',
+    name: 'is_work',
+    default: false,
+    comment: 'El estudiante trabaja, true = si y false = no',
+  })
   isWork: boolean;
 
   @ManyToOne(() => CatalogueEntity, { nullable: true })
@@ -133,7 +187,7 @@ export class InformationStudentEntity {
   })
   townId: string;
 
-  @OneToOne(() => StudentEntity, student => student.informationStudent)
+  @OneToOne(() => StudentEntity, (student) => student.informationStudent)
   @JoinColumn({ name: 'student_id' })
   student: StudentEntity;
   @Column({ type: 'uuid', name: 'student_id', comment: 'Estudiante que pertenece la informacion' })
@@ -146,12 +200,35 @@ export class InformationStudentEntity {
     type: 'uuid',
     name: 'working_hours_id',
     nullable: true,
-    comment: 'Horario Laboral: Mañana (4 horas), Vespertino (4 hors), Nocturna ( 4 horas), Dia completo (8 horas), Velada Completa (8 horas) y otros',
+    comment:
+      'Horario Laboral: Mañana (4 horas), Vespertino (4 hors), Nocturna ( 4 horas), Dia completo (8 horas), Velada Completa (8 horas) y otros',
   })
   workingHoursId: string;
 
+  @ManyToOne(() => CatalogueEntity)
+  @JoinColumn({ name: 'career_id' })
+  career: CatalogueEntity;
+  @Column({
+    type: 'uuid',
+    name: 'career_id',
+    nullable: true,
+    comment: 'Carrera que pertenece',
+  })
+  careerId: string;
+
+  @ManyToOne(() => CatalogueEntity)
+  @JoinColumn({ name: 'academic_period_id' })
+  academicPeriod: CatalogueEntity;
+  @Column({
+    type: 'uuid',
+    name: 'academic_period_id',
+    nullable: true,
+    comment: 'Período académico (semestre del estudiante)',
+  })
+  academicPeriodId: string;
+
   /** Columns **/
-  //Preguntar
+  // Preguntar
   @Column({
     name: 'address',
     type: 'text',

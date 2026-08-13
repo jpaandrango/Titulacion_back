@@ -15,8 +15,9 @@ import { UserEntity } from '@auth/entities';
 
 @Injectable()
 export class EnrollmentSqlService {
-  constructor(@Inject(CoreRepositoryEnum.enrollmentRepository) private readonly repository: Repository<EnrollmentEntity>) {}
+  constructor(@Inject(CoreRepositoryEnum.enrollmentRepository) private readonly repository: Repository<EnrollmentEntity>) { }
 
+  // ─── Queries raw para reportes XLSX ────────────────────────────────────────────
   async findEnrollmentsByCareer(careerId: string, schoolPeriodId: string): Promise<any[]> {
     const queryBuilder: SelectQueryBuilder<EnrollmentEntity> = this.repository.createQueryBuilder('enrollments');
     queryBuilder
@@ -70,9 +71,6 @@ export class EnrollmentSqlService {
         'types.name as "Tipo de Matricula"',
         'enrollments.date as " Fecha de Matricula"',
         'enrollments.applications_at as "Fecha de envio de solicitud"',
-        'enrollments.socioeconomic_category as "Nivel Socioeconómico"',
-        'enrollments.socioeconomic_percentage as "Porcentaje Socioeconómico"',
-        'enrollments.socioeconomic_score as "Puntaje Socioeconómico"',
         'states.name as "Estado"',
       ])
       .innerJoin(EnrollmentStateEntity, 'enrollment_states', 'enrollment_states.enrollment_id = enrollments.id')
@@ -94,6 +92,7 @@ export class EnrollmentSqlService {
     return await queryBuilder.getRawMany();
   }
 
+  // ─── Query para el certificado (ORM, con relaciones) ───────────────────────────
   async findEnrollmentCertificateByEnrollment(id: string): Promise<EnrollmentEntity | null> {
     return await this.repository.findOne({
       relations: {
@@ -125,10 +124,11 @@ export class EnrollmentSqlService {
         'users.lastname as "Apellidos"',
         'users.name as "Nombres"',
         'users.email as "Correo Electrónico"',
-        'parallels.name as "Paralelo"',
         'types.name as "Tipo de Matrícula"',
         'subjects.code as "Código de Asignatura"',
         'subjects.name as "Asignutura"',
+        'parallels.name as "Paralelo"',
+        'workdays.name as "Horario"',
         'enrollment_details.number as "Número de Matrícula"',
         'academic_state.name as "Estado Asignatura"',
         'detail_states.name as "Estado Matrícula"',
@@ -147,6 +147,7 @@ export class EnrollmentSqlService {
       .leftJoin(CatalogueEntity, 'academic_state', 'academic_state.id = enrollment_details.academic_state_id')
       .innerJoin(SubjectEntity, 'subjects', 'subjects.id = enrollment_details.subject_id')
       .innerJoin(CatalogueEntity, 'parallels', 'parallels.id = enrollment_details.parallel_id')
+      .innerJoin(CatalogueEntity, 'workdays', 'workdays.id = enrollment_details.workday_id')
       .where(
         `enrollments.school_period_id = :schoolPeriodId 
                 AND enrollment_states.deleted_at is null 

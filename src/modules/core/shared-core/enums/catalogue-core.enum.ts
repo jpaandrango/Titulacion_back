@@ -17,6 +17,7 @@ export enum CatalogueCoreTypeEnum {
   enrollments_workday = 'ENROLLMENTS_WORKDAY',
   enrollments_academic_state = 'ENROLLMENTS_ACADEMIC_STATE',
   parallel = 'PARALLEL',
+  school_periods_state = 'SCHOOL_PERIODS_STATE',
 }
 
 export enum CatalogueStateEnum {

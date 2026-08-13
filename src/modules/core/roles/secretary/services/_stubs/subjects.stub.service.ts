@@ -5,7 +5,7 @@ import { CoreRepositoryEnum } from '@modules/core/shared-core/enums';
 
 /**
  * STUB — pertenece al módulo de "Asignaturas" (subjects), no a Secretaría.
- * Implementa solo findOne, que es lo que EnrollmentsService necesita.
+ * Implementa SOLO findOne, que es lo que EnrollmentsService necesita.
  * Reemplazar por el SubjectsService oficial cuando exista.
  */
 @Injectable()

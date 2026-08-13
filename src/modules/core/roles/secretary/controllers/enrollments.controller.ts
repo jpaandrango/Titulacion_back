@@ -17,8 +17,9 @@ export class EnrollmentsController {
   constructor(
     private readonly enrollmentsService: EnrollmentsService,
     private readonly enrollmentsDetailService: EnrollmentDetailsService,
-  ) {}
+  ) { }
 
+  // ─── CRUD ───────────────────────────────────────────────────────────────────
   @ApiOperation({ summary: 'Create Enrollment' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -40,13 +41,13 @@ export class EnrollmentsController {
 
     return {
       data: serviceResponse.data,
-      pagination: serviceResponse.pagination as any,
+      pagination: serviceResponse.pagination,
       message: 'Buscar matrículas',
       title: 'Success',
     };
   }
 
-  // Usado por el front: GET /careers/:careerId/enrollments (ver nota de migración de rutas)
+  // Usado por el front: GET /careers/:careerId/enrollments
   @ApiOperation({ summary: 'Find Enrollments By Career' })
   @Get('careers/:careerId')
   @HttpCode(HttpStatus.OK)
@@ -55,7 +56,7 @@ export class EnrollmentsController {
 
     return {
       data: serviceResponse.data,
-      pagination: serviceResponse.pagination as any,
+      pagination: serviceResponse.pagination,
       message: 'Buscar matrículas por carrera',
       title: 'Success',
     };
@@ -112,6 +113,7 @@ export class EnrollmentsController {
     };
   }
 
+  // ─── Asignaturas de la matrícula ──────────────────────────────────────────────
   @ApiOperation({ summary: 'Find Enrollment Details By Enrollment' })
   @Get(':id/enrollment-details')
   @HttpCode(HttpStatus.OK)
@@ -125,6 +127,7 @@ export class EnrollmentsController {
     };
   }
 
+  // ─── Flujo de solicitud (registro → envío) ────────────────────────────────────
   @ApiOperation({ summary: 'Send Registration' })
   @Post('send-registration')
   @HttpCode(HttpStatus.CREATED)
@@ -151,6 +154,7 @@ export class EnrollmentsController {
     };
   }
 
+  // ─── Acciones de estado (registrada → aprobada → matriculada / rechazada / anulada) ──
   @ApiOperation({ summary: 'Approve Enrollment' })
   @Patch(':id/approve')
   @HttpCode(HttpStatus.CREATED)
@@ -196,19 +200,6 @@ export class EnrollmentsController {
       data: serviceResponse,
       message: 'La matrícula fue anulada',
       title: 'Anulada',
-    };
-  }
-
-  @ApiOperation({ summary: 'Recalculate Socioeconomic Forms' })
-  @Patch('recalculate-socioeconomic-forms')
-  @HttpCode(HttpStatus.OK)
-  async recalculateSocioeconomicForm(): Promise<ResponseHttpInterface> {
-    const serviceResponse = await this.enrollmentsService.recalculateSocioeconomicForm();
-
-    return {
-      data: serviceResponse,
-      message: 'Success',
-      title: 'Success',
     };
   }
 }

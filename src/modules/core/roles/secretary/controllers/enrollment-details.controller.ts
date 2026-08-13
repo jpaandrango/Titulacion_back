@@ -17,8 +17,9 @@ import { ResponseHttpInterface } from '@utils/interfaces';
 @Roles(RoleEnum.secretary)
 @Controller('core/secretary/enrollment-details')
 export class EnrollmentDetailsController {
-  constructor(private enrollmentDetailsService: EnrollmentDetailsService) {}
+  constructor(private enrollmentDetailsService: EnrollmentDetailsService) { }
 
+  // ─── CRUD ───────────────────────────────────────────────────────────────────
   @ApiOperation({ summary: 'Create Enrollment Detail' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -40,7 +41,7 @@ export class EnrollmentDetailsController {
 
     return {
       data: serviceResponse.data,
-      pagination: serviceResponse.pagination as any,
+      pagination: serviceResponse.pagination,
       message: 'Buscar detalles de matrícula',
       title: 'Success',
     };
@@ -96,6 +97,7 @@ export class EnrollmentDetailsController {
     };
   }
 
+  // ─── Acciones de estado (misma lógica que Enrollments, a nivel de asignatura) ──
   @ApiOperation({ summary: 'Approve Enrollment Detail' })
   @Patch(':id/approve')
   @HttpCode(HttpStatus.CREATED)
@@ -160,6 +162,7 @@ export class EnrollmentDetailsController {
     };
   }
 
+  // ─── Flujo de solicitud ───────────────────────────────────────────────────────
   @ApiOperation({ summary: 'Send Request' })
   @Post(':id/send-request')
   @HttpCode(HttpStatus.CREATED)

@@ -5,7 +5,8 @@ import { CoreRepositoryEnum } from '@modules/core/shared-core/enums';
 
 /**
  * STUB — pertenece al módulo de "Distribución de Docentes" (teacher-distributions),
- * no a Secretaría. Implementa solo findOne, que es lo que EnrollmentDetailsService necesita.
+ * no a Secretaría. Implementa SOLO findOne, que es lo que EnrollmentDetailsService necesita.
+ * Reemplazar por el TeacherDistributionsService oficial cuando exista.
  */
 @Injectable()
 export class TeacherDistributionsStubService {

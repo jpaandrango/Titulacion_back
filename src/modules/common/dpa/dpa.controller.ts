@@ -12,7 +12,6 @@ export class DpaController {
   @PublicRoute()
   @ApiOperation({ summary: 'Find Cache' })
   @Get('cache')
-  @HttpCode(HttpStatus.OK)
   async findCache(): Promise<ResponseHttpInterface> {
     const serviceResponse = await this.service.findCache();
 
@@ -25,7 +24,6 @@ export class DpaController {
 
   @ApiOperation({ summary: 'Load Cache' })
   @Patch('cache')
-  @HttpCode(HttpStatus.OK)
   async loadCache(): Promise<ResponseHttpInterface> {
     const serviceResponse = await this.service.loadCache();
     return {

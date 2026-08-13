@@ -24,11 +24,12 @@ import { CareersService } from '@modules/core/roles/career-coordinator/services/
 @Auth()
 @Controller('core/career-coordinator/careers')
 export class CareersController {
-  constructor(private readonly service: CareersService) {}
+  constructor(private readonly service: CareersService) { }
 
+  // ─── Secretaría: @Roles ampliado a secretary (antes solo admin) + endpoint nuevo ──
   @ApiOperation({ summary: 'Find All Careers' })
   @Get()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.secretary)
   async findAll(@Query() params: FilterCareerDto): Promise<ResponseHttpInterface> {
     const response = await this.service.findAll(params);
 
@@ -42,7 +43,7 @@ export class CareersController {
 
   @ApiOperation({ summary: 'Find One Career' })
   @Get(':id')
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.secretary)
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<ResponseHttpInterface> {
     const response = await this.service.findOne(id);
 
@@ -53,6 +54,20 @@ export class CareersController {
     };
   }
 
+  @ApiOperation({ summary: 'Find Subjects By Career' })
+  @Get(':id/subjects')
+  @Roles(RoleEnum.admin, RoleEnum.secretary)
+  async findSubjectsByCareer(@Param('id', ParseUUIDPipe) id: string): Promise<ResponseHttpInterface> {
+    const response = await this.service.findSubjectsByCareer(id);
+
+    return {
+      data: response,
+      message: `Asignaturas de la carrera`,
+      title: `Consultado`,
+    };
+  }
+
+  // ─── Resto del CRUD — sin cambios, solo admin ─────────────
   @ApiOperation({ summary: 'Create Career' })
   @Post()
   @Roles(RoleEnum.admin)
@@ -77,7 +92,7 @@ export class CareersController {
 
     return {
       data: response,
-      message: `La carrera se actulizó correctamente`,
+      message: `La carrera se actualizó correctamente`,
       title: `Actualizado`,
     };
   }

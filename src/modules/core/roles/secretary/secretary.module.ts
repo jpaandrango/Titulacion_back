@@ -10,9 +10,8 @@ import {
   EnrollmentSqlService,
   EnrollmentReportsService,
   CoreCataloguesService,
-  SchoolPeriodsStubService,
-  CareerParallelsStubService,
-  StudentsStubService,
+  SchoolPeriodsService,
+  CareerParallelsService,
   SubjectsStubService,
   TeacherDistributionsStubService,
 } from '@modules/core/roles/secretary/services';
@@ -21,9 +20,10 @@ import {
  * Rol: Secretaría — Matrícula (Enrollments + Enrollment Details + Reportes).
  *
  * Ver README de este módulo (o el resumen entregado junto al ZIP) para el detalle
- * de qué está portado 1:1 desde el backend viejo y qué es un STUB pendiente de
- * reemplazo por el servicio oficial de otro módulo/rol (School Periods, Career
- * Parallels, Subjects, Students, Teacher Distributions).
+ * de qué está portado 1:1 desde el backend viejo. School Periods y Career Parallels
+ * ya son servicios reales (dejaron de ser stub). Siguen como STUB, pendientes de
+ * reemplazo por el servicio oficial de otro módulo/rol: Subjects, Students, Teacher
+ * Distributions.
  *
  * NOTA: este módulo usa CoreCataloguesService (propio, sobre core.catalogues), NO
  * CataloguesService de @modules/common/catalogue — ver la nota en core-catalogues.service.ts.
@@ -34,19 +34,29 @@ import {
   controllers,
   providers: [
     ...coreProviders,
+    // Matrícula (core del módulo)
     EnrollmentsService,
     EnrollmentDetailsService,
     EnrollmentStatesService,
     EnrollmentDetailStatesService,
     EnrollmentSqlService,
     EnrollmentReportsService,
+    // Servicios reales que antes eran stub
     CoreCataloguesService,
-    SchoolPeriodsStubService,
-    CareerParallelsStubService,
-    StudentsStubService,
+    SchoolPeriodsService,
+    CareerParallelsService,
+    // Siguen siendo stubs (dependencias de otros módulos)
     SubjectsStubService,
     TeacherDistributionsStubService,
   ],
-  exports: [EnrollmentsService, EnrollmentDetailsService, EnrollmentStatesService, EnrollmentDetailStatesService],
+  exports: [
+    EnrollmentsService,
+    EnrollmentDetailsService,
+    EnrollmentStatesService,
+    EnrollmentDetailStatesService,
+    CoreCataloguesService,
+    SchoolPeriodsService,
+    CareerParallelsService,
+  ],
 })
 export class SecretaryModule {}
