@@ -71,9 +71,6 @@ export class EnrollmentSqlService {
         'types.name as "Tipo de Matricula"',
         'enrollments.date as " Fecha de Matricula"',
         'enrollments.applications_at as "Fecha de envio de solicitud"',
-        'enrollments.socioeconomic_category as "Nivel Socioeconómico"',
-        'enrollments.socioeconomic_percentage as "Porcentaje Socioeconómico"',
-        'enrollments.socioeconomic_score as "Puntaje Socioeconómico"',
         'states.name as "Estado"',
       ])
       .innerJoin(EnrollmentStateEntity, 'enrollment_states', 'enrollment_states.enrollment_id = enrollments.id')

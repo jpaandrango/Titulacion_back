@@ -12,7 +12,6 @@ import {
   CoreCataloguesService,
   SchoolPeriodsService,
   CareerParallelsService,
-  StudentsStubService,
   SubjectsStubService,
   TeacherDistributionsStubService,
 } from '@modules/core/roles/secretary/services';
@@ -47,7 +46,6 @@ import {
     SchoolPeriodsService,
     CareerParallelsService,
     // Siguen siendo stubs (dependencias de otros módulos)
-    StudentsStubService,
     SubjectsStubService,
     TeacherDistributionsStubService,
   ],

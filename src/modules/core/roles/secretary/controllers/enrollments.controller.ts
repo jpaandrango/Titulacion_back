@@ -202,18 +202,4 @@ export class EnrollmentsController {
       title: 'Anulada',
     };
   }
-
-  // ─── Otros ──────────────────────────────────────────────────────────────────
-  @ApiOperation({ summary: 'Recalculate Socioeconomic Forms' })
-  @Patch('recalculate-socioeconomic-forms')
-  @HttpCode(HttpStatus.OK)
-  async recalculateSocioeconomicForm(): Promise<ResponseHttpInterface> {
-    const serviceResponse = await this.enrollmentsService.recalculateSocioeconomicForm();
-
-    return {
-      data: serviceResponse,
-      message: 'Success',
-      title: 'Success',
-    };
-  }
 }

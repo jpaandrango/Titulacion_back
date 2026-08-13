@@ -1,11 +1,11 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Repository, FindOptionsWhere, ILike } from 'typeorm';
+import { Repository, FindOptionsWhere, ILike, Not, In } from 'typeorm';
 import {
   CreateEnrollmentsDetailDto,
   FilterEnrollmentsDetailDto,
   UpdateEnrollmentsDetailDto,
 } from '@modules/core/roles/secretary/dto';
-import { CatalogueEntity, EnrollmentDetailEntity } from '@modules/core/entities';
+import { CatalogueEntity, EnrollmentDetailEntity, EnrollmentEntity } from '@modules/core/entities';
 import { CatalogueEnrollmentStateEnum, CatalogueCoreTypeEnum, CoreRepositoryEnum } from '@modules/core/shared-core/enums';
 import { EnrollmentDetailStatesService } from '@modules/core/roles/secretary/services/enrollment-detail-states.service';
 import { CoreCataloguesService } from '@modules/core/roles/secretary/services/core-catalogues.service';
@@ -17,6 +17,10 @@ export class EnrollmentDetailsService {
   constructor(
     @Inject(CoreRepositoryEnum.enrollmentDetailRepository)
     private readonly repository: Repository<EnrollmentDetailEntity>,
+    // Solo se usa para leer enrollment.studentId al validar el límite de 3 intentos —
+    // este service no administra matrículas, solo consulta el dato puntual que necesita.
+    @Inject(CoreRepositoryEnum.enrollmentRepository)
+    private readonly enrollmentRepository: Repository<EnrollmentEntity>,
     private readonly enrollmentDetailStatesService: EnrollmentDetailStatesService,
     private readonly cataloguesService: CoreCataloguesService,
     private readonly teacherDistributionsService: TeacherDistributionsStubService,
@@ -33,6 +37,43 @@ export class EnrollmentDetailsService {
 
     if (enrollmentDetailExist.length > 0) {
       throw new BadRequestException('La asignatura ya existe, por favor ingrese otra');
+    }
+
+    // limite de matriculas
+    const enrollment = await this.enrollmentRepository.findOneBy({ id: payload.enrollmentId });
+
+    if (!enrollment) {
+      throw new NotFoundException('Matrícula no encontrada');
+    }
+
+    const previousAttempts = await this.calculateEnrollmentDetailNumber(enrollment.studentId, payload.subject.id);
+
+    if (previousAttempts.length + 1 > 3) {
+      throw new BadRequestException('El estudiante ya alcanzó el límite de 3 matrículas para esta asignatura');
+    }
+
+    // una matrícula solo puede tener UNA asignatura
+    // "activa" a la vez — no varias simultáneas.
+    const catalogues = await this.cataloguesService.findCache();
+
+    const revokedState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REVOKED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    )!;
+    const rejectedState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REJECTED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    )!;
+
+    const activeDetail = await this.repository.findOne({
+      where: {
+        enrollmentId: payload.enrollmentId,
+        enrollmentDetailState: { stateId: Not(In([revokedState.id, rejectedState.id])) },
+      },
+    });
+
+    if (activeDetail) {
+      throw new BadRequestException(
+        'Esta matrícula ya tiene una asignatura activa. Anule o rechace la actual antes de crear otra.',
+      );
     }
 
     const newEnrollmentDetail = this.repository.create();
@@ -192,7 +233,6 @@ export class EnrollmentDetailsService {
   }
 
   private getOffset(limit: number, page: number): number {
-    // Ver nota equivalente en enrollments.service.ts — PaginationDto.getOffset() ya no existe.
     const safePage = !page || page < 1 ? 1 : page;
     return (safePage - 1) * (limit || 10);
   }

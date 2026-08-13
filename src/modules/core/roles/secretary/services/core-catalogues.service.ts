@@ -5,9 +5,7 @@ import { CoreRepositoryEnum } from '@modules/core/shared-core/enums';
 
 /**
  * Resuelve catálogos del esquema `core` (tabla `core.catalogues`).
- *
- * IMPORTANTE — por qué existe este servicio y no se usa `CataloguesService` de
- * `@modules/common/catalogue`: se verificó que las FK de `core.enrollments`,
+ * se verificó que las FK de `core.enrollments`,
  * `core.enrollment_details`, `core.enrollment_states` y `core.enrollment_detail_states`
  * apuntan a `core.catalogues(id)`, NO a `common.catalogues(id)`. `CataloguesService`
  */

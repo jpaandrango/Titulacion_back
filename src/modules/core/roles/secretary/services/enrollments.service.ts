@@ -9,7 +9,6 @@ import { EnrollmentDetailStatesService } from '@modules/core/roles/secretary/ser
 import { CoreCataloguesService } from '@modules/core/roles/secretary/services/core-catalogues.service';
 import { SchoolPeriodsService } from '@modules/core/roles/secretary/services/school-periods.service';
 import { CareerParallelsService } from '@modules/core/roles/secretary/services/career-parallels.service';
-import { StudentsStubService } from '@modules/core/roles/secretary/services/_stubs/students.stub.service';
 import { SubjectsStubService } from '@modules/core/roles/secretary/services/_stubs/subjects.stub.service';
 import {
   CatalogueEnrollmentStateEnum,
@@ -33,7 +32,6 @@ export class EnrollmentsService {
     private readonly cataloguesService: CoreCataloguesService,
     private readonly schoolPeriodsService: SchoolPeriodsService,
     private readonly careerParallelsService: CareerParallelsService,
-    private readonly studentsService: StudentsStubService,
     private readonly subjectsService: SubjectsStubService,
   ) { }
 
@@ -387,9 +385,6 @@ export class EnrollmentsService {
     enrollment.studentId = payload.student.id;
     enrollment.workdayId = payload.workday.id;
     enrollment.applicationsAt = new Date();
-    enrollment.socioeconomicScore = await this.studentsService.calculateSocioeconomicFormScore(enrollment.studentId);
-    enrollment.socioeconomicCategory = this.studentsService.calculateSocioeconomicFormCategory(enrollment.socioeconomicScore);
-    enrollment.socioeconomicPercentage = this.studentsService.calculateSocioeconomicFormPercentage(enrollment.socioeconomicCategory);
 
     enrollment = await this.repository.save(enrollment);
 
@@ -835,28 +830,6 @@ export class EnrollmentsService {
       },
       where: { id },
     });
-  }
-
-  // ─── Otros ──────────────────────────────────────────────────────────────────
-  async recalculateSocioeconomicForm(): Promise<EnrollmentEntity> {
-    const enrollments = await this.repository.find({
-      relations: { enrollmentStates: { state: true }, enrollmentDetails: true },
-      where: {
-        enrollmentStates: {
-          state: { code: In(['request_sent', 'approved', 'enrolled', 'revoked', 'registered', 'rejected']) },
-        },
-      },
-    });
-
-    for (const enrollment of enrollments) {
-      enrollment.socioeconomicScore = await this.studentsService.calculateSocioeconomicFormScore(enrollment.studentId);
-      enrollment.socioeconomicCategory = this.studentsService.calculateSocioeconomicFormCategory(enrollment.socioeconomicScore);
-      enrollment.socioeconomicPercentage = this.studentsService.calculateSocioeconomicFormPercentage(enrollment.socioeconomicCategory);
-
-      await this.repository.save(enrollment);
-    }
-
-    return enrollments[0];
   }
 
   async findLastEnrollmentDetailByStudent(studentId: string, careerId: string): Promise<string> {

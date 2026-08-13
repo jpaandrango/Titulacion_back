@@ -12,11 +12,9 @@ import { EnrollmentSqlService } from '@modules/core/roles/secretary/services/enr
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { PDFDocument } = require('pdfkit-table-ts');
 
-/**
- * Reportes de matrícula (Secretaría).
- *solo se portaron los 4 reportes que el front de Secretaría consume
- * certificado, matriculados por carrera, matriculados por período lectivo y asignaturas por período lectivo.
-  */
+
+// Reportes de matrícula (Secretaría).
+// solo se portaron los 4 reportes que el front de Secretaría consume
 @Injectable()
 export class EnrollmentReportsService {
   private readonly logger = new Logger(EnrollmentReportsService.name);
@@ -146,8 +144,7 @@ export class EnrollmentReportsService {
     // "unsupported number: NaN". Ahora hay exactamente 7 valores, uno por columna.
     await doc.table(table, { align: 'center', columnsSize: [50, 145, 45, 30, 45, 65, 90] });
 
-    // QR opcional — puntero a la propia matrícula (se genera pero, por ahora, no se
-    // inserta visualmente en el PDF; queda pendiente si se quiere agregar la imagen).
+    // QR opcional — puntero a la propia matrícula
     const qrData = `enrollment:${enrollment.id}`;
     await qr.toBuffer(qrData, { errorCorrectionLevel: 'H', type: 'png', margin: 1, scale: 6 });
 
