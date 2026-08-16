@@ -385,6 +385,10 @@ export class EnrollmentsService {
     enrollment.studentId = payload.student.id;
     enrollment.workdayId = payload.workday.id;
     enrollment.applicationsAt = new Date();
+    // FIX: sendRegistration() nunca calculaba el "Tipo de Matrícula" 
+    // FIX 2: getType() necesita el período lectivo COMPLETO 
+    const fullSchoolPeriod = await this.schoolPeriodsService.findOne(payload.schoolPeriod.id);
+    enrollment.typeId = (await this.getType(fullSchoolPeriod)).id;
 
     enrollment = await this.repository.save(enrollment);
 
@@ -489,7 +493,10 @@ export class EnrollmentsService {
     if (!enrollment) enrollment = this.repository.create();
 
     enrollment.applicationsAt = new Date();
-    enrollment.typeId = (await this.getType(payload.schoolPeriod)).id;
+    // FIX: mismo motivo que en sendRegistration() — getType() necesita el período
+    // completo (con fechas), no el objeto parcial { id } que llega en el payload.
+    const fullSchoolPeriodForRequest = await this.schoolPeriodsService.findOne(payload.schoolPeriod.id);
+    enrollment.typeId = (await this.getType(fullSchoolPeriodForRequest)).id;
 
     enrollment = await this.repository.save(enrollment);
 
