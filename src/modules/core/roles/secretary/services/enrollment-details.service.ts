@@ -10,6 +10,7 @@ import { CatalogueEnrollmentStateEnum, CatalogueCoreTypeEnum, CoreRepositoryEnum
 import { EnrollmentDetailStatesService } from '@modules/core/roles/secretary/services/enrollment-detail-states.service';
 import { CoreCataloguesService } from '@modules/core/roles/secretary/services/core-catalogues.service';
 import { TeacherDistributionsStubService } from '@modules/core/roles/secretary/services/_stubs/teacher-distributions.stub.service';
+import { SubjectsStubService } from '@modules/core/roles/secretary/services/_stubs/subjects.stub.service';
 import { ServiceResponseHttpInterface } from '@utils/interfaces';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class EnrollmentDetailsService {
     private readonly enrollmentDetailStatesService: EnrollmentDetailStatesService,
     private readonly cataloguesService: CoreCataloguesService,
     private readonly teacherDistributionsService: TeacherDistributionsStubService,
+    private readonly subjectsService: SubjectsStubService,
   ) { }
 
   // ─── CRUD y flujo de solicitud ─────────────────────────────────────────────────
@@ -39,7 +41,12 @@ export class EnrollmentDetailsService {
       throw new BadRequestException('La asignatura ya existe, por favor ingrese otra');
     }
 
-    // limite de matriculas
+    // FIX: antes esto solo se topaba visualmente en el front (Math.min(count+1, 3)),
+    // el backend nunca lo impedía de verdad — se podía crear una 4ª matrícula igual
+    // si se mandaba la petición directo. Ahora se bloquea acá, con la misma consulta
+    // real que ya usa calculateEnrollmentDetailNumber (solo cuenta intentos
+    // reprobados cuyo estado actual siga siendo "matriculado" — uno anulado o
+    // rechazado no cuenta, tal como se definió).
     const enrollment = await this.enrollmentRepository.findOneBy({ id: payload.enrollmentId });
 
     if (!enrollment) {
@@ -52,8 +59,12 @@ export class EnrollmentDetailsService {
       throw new BadRequestException('El estudiante ya alcanzó el límite de 3 matrículas para esta asignatura');
     }
 
-    // una matrícula solo puede tener UNA asignatura
-    // "activa" a la vez — no varias simultáneas.
+    // REGLA DE NEGOCIO NUEVA (no existía en el sistema viejo, se confirmó buscando
+    // en backend y front viejos): una matrícula solo puede tener UNA asignatura
+    // "activa" a la vez — no varias simultáneas. "Activa" = cualquier estado que no
+    // sea anulada/rechazada. Si la única asignatura se anula o rechaza, se libera
+    // el cupo y se puede crear otra dentro de la MISMA matrícula (ej. se
+    // matricularon en la asignatura equivocada, se anula, se crea la correcta).
     const catalogues = await this.cataloguesService.findCache();
 
     const revokedState = catalogues.find(
@@ -86,7 +97,21 @@ export class EnrollmentDetailsService {
     newEnrollmentDetail.typeId = payload.type.id;
     newEnrollmentDetail.workdayId = payload.workday.id;
 
-    return await this.repository.save(newEnrollmentDetail);
+    const savedEnrollmentDetail = await this.repository.save(newEnrollmentDetail);
+
+    // REGLA DE NEGOCIO NUEVA: con la matrícula limitada a 1 asignatura activa a la
+    // vez, sus campos compartidos (tipo, paralelo, horario, periodo académico) deben
+    // reflejar siempre los de esa asignatura — evita que la matrícula se quede
+    // mostrando datos de una asignatura anterior ya anulada/eliminada. El periodo
+    // académico no es un campo propio de la asignatura, se deriva del subject.
+    const subject = await this.subjectsService.findOne(payload.subject.id);
+    enrollment.typeId = payload.type.id;
+    enrollment.parallelId = payload.parallel.id;
+    enrollment.workdayId = payload.workday.id;
+    enrollment.academicPeriodId = subject.academicPeriodId;
+    await this.enrollmentRepository.save(enrollment);
+
+    return savedEnrollmentDetail;
   }
 
   async sendRequest(userId: string, enrollmentDetailId: string, payload: CreateEnrollmentsDetailDto): Promise<EnrollmentDetailEntity> {
@@ -156,7 +181,23 @@ export class EnrollmentDetailsService {
     if (payload.finalAttendance) enrollmentDetail.finalAttendance = payload.finalAttendance;
     if (payload.academicState) enrollmentDetail.academicState = payload.academicState as CatalogueEntity;
 
-    return await this.repository.save(enrollmentDetail);
+    const savedEnrollmentDetail = await this.repository.save(enrollmentDetail);
+
+    // Mismo motivo que en create(): mantener sincronizados los campos compartidos
+    // con la matrícula. Acá no se re-deriva el periodo académico porque la
+    // asignatura (subject) no cambia al editar — solo tipo/paralelo/horario.
+    if (payload.parallel || payload.type || payload.workday) {
+      const enrollment = await this.enrollmentRepository.findOneBy({ id: enrollmentDetail.enrollmentId });
+
+      if (enrollment) {
+        if (payload.parallel) enrollment.parallelId = payload.parallel.id;
+        if (payload.type) enrollment.typeId = payload.type.id;
+        if (payload.workday) enrollment.workdayId = payload.workday.id;
+        await this.enrollmentRepository.save(enrollment);
+      }
+    }
+
+    return savedEnrollmentDetail;
   }
 
   async updateParallels(enrollmentId: string, parallelId: string): Promise<EnrollmentDetailEntity[]> {
@@ -233,6 +274,7 @@ export class EnrollmentDetailsService {
   }
 
   private getOffset(limit: number, page: number): number {
+    // Ver nota equivalente en enrollments.service.ts — PaginationDto.getOffset() ya no existe.
     const safePage = !page || page < 1 ? 1 : page;
     return (safePage - 1) * (limit || 10);
   }
