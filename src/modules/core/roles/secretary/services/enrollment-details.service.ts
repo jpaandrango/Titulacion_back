@@ -59,8 +59,7 @@ export class EnrollmentDetailsService {
       throw new BadRequestException('El estudiante ya alcanzó el límite de 3 matrículas para esta asignatura');
     }
 
-    // una matrícula solo puede tener UNA asignatura
-    // "activa" a la vez — no varias simultáneas.
+    // una matrícula solo puede tener una asignatura "activa" a la vez
     const catalogues = await this.cataloguesService.findCache();
 
     const revokedState = catalogues.find(
@@ -95,9 +94,8 @@ export class EnrollmentDetailsService {
 
     const savedEnrollmentDetail = await this.repository.save(newEnrollmentDetail);
 
-    // matrícula limitada a 1 asignatura activa a la
-    // vez, sus campos compartidos (tipo, paralelo, horario, periodo académico) deben
-    // reflejar siempre los de esa asignatura 
+    // la matrícula limitada a 1 asignatura activa a la
+    // vez, sus campos compartidos (tipo, paralelo, horario, periodo académico) 
     const subject = await this.subjectsService.findOne(payload.subject.id);
     enrollment.typeId = payload.type.id;
     enrollment.parallelId = payload.parallel.id;
@@ -179,7 +177,14 @@ export class EnrollmentDetailsService {
     if (payload.academicState) enrollmentDetail.academicState = payload.academicState as CatalogueEntity;
 
     // el estado académico debe ser coherente con la nota y la asistencia 
-    const academicStateCode = (enrollmentDetail.academicState as CatalogueEntity)?.code;
+    const effectiveAcademicStateId = payload.academicState?.id ?? enrollmentDetail.academicStateId;
+    let academicStateCode: string | undefined;
+
+    if (effectiveAcademicStateId) {
+      const catalogues = await this.cataloguesService.findCache();
+      academicStateCode = catalogues.find((c) => c.id === effectiveAcademicStateId)?.code;
+    }
+
     const grade = enrollmentDetail.finalGrade;
     const attendance = enrollmentDetail.finalAttendance;
     const MIN_APPROVING_GRADE = 7;
@@ -203,6 +208,8 @@ export class EnrollmentDetailsService {
 
     const savedEnrollmentDetail = await this.repository.save(enrollmentDetail);
 
+    // mantener sincronizados los campos compartidos con la matrícula.
+    // asignatura (subject) no cambia al editar — solo tipo/paralelo/horario.
     if (payload.parallel || payload.type || payload.workday) {
       const enrollment = await this.enrollmentRepository.findOneBy({ id: enrollmentDetail.enrollmentId });
 
