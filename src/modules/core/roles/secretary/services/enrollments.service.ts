@@ -187,6 +187,22 @@ export class EnrollmentsService {
         { careerId, student: { user: { lastname: ILike(`%${search}%`) } } },
       );
     } else {
+      let matchingEnrollmentIds: string[] | null = null;
+
+      if (params.subjectId) {
+        const matches = await this.repository
+          .createQueryBuilder('enrollment')
+          .innerJoin('enrollment.enrollmentDetails', 'detail', 'detail.subject_id = :subjectId', {
+            subjectId: params.subjectId,
+          })
+          .select('enrollment.id', 'id')
+          .getRawMany();
+
+        matchingEnrollmentIds = matches.map((m) => m.id);
+      }
+
+      const subjectFilter = matchingEnrollmentIds ? { id: In(matchingEnrollmentIds) } : {};
+
       if (params.academicPeriodId) {
         if (params.enrollmentStateId) {
           where.push({
@@ -194,12 +210,14 @@ export class EnrollmentsService {
             schoolPeriodId: params.schoolPeriodId,
             academicPeriodId: params.academicPeriodId,
             enrollmentState: { state: { id: params.enrollmentStateId } },
+            ...subjectFilter,
           });
         } else {
           where.push({
             careerId,
             schoolPeriodId: params.schoolPeriodId,
             academicPeriodId: params.academicPeriodId,
+            ...subjectFilter,
           });
         }
       } else {
@@ -208,11 +226,13 @@ export class EnrollmentsService {
             careerId,
             schoolPeriodId: params.schoolPeriodId,
             enrollmentState: { state: { id: params.enrollmentStateId } },
+            ...subjectFilter,
           });
         } else {
           where.push({
             careerId,
             schoolPeriodId: params.schoolPeriodId,
+            ...subjectFilter,
           });
         }
       }
@@ -229,6 +249,9 @@ export class EnrollmentsService {
         student: { user: true },
         type: true,
         workday: true,
+        // Con la regla de 1 asignatura activa a la vez, esto trae como máximo 1
+        // elemento — se usa para mostrar el código de asignatura en la lista.
+        enrollmentDetails: { subject: true },
       },
       where,
       take: limit,
@@ -240,7 +263,6 @@ export class EnrollmentsService {
       pagination: { limit, totalItems: response[1] },
     };
   }
-
   private getOffset(limit: number, page: number): number {
     const safePage = !page || page < 1 ? 1 : page;
     return (safePage - 1) * (limit || 10);
