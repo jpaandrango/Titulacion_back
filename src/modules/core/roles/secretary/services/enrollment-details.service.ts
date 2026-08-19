@@ -96,12 +96,17 @@ export class EnrollmentDetailsService {
 
     // la matrícula limitada a 1 asignatura activa a la
     // vez, sus campos compartidos (tipo, paralelo, horario, periodo académico) 
-    const subject = await this.subjectsService.findOne(payload.subject.id);
-    enrollment.typeId = payload.type.id;
-    enrollment.parallelId = payload.parallel.id;
-    enrollment.workdayId = payload.workday.id;
-    enrollment.academicPeriodId = subject.academicPeriodId;
-    await this.enrollmentRepository.save(enrollment);
+    const requestSentState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REQUEST_SENT && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    )!;
+
+    await this.enrollmentDetailStatesService.create({
+      enrollmentDetailId: savedEnrollmentDetail.id,
+      stateId: requestSentState.id,
+      userId,
+      date: new Date(),
+      observation: payload.observation,
+    });
 
     return savedEnrollmentDetail;
   }
