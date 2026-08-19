@@ -561,6 +561,26 @@ export class EnrollmentsService {
     return enrollment;
   }
 
+  // ─── Validación de transiciones de estado ──────────────────────────────────
+  private readonly allowedStateTransitions: Record<string, string[]> = {
+    [CatalogueEnrollmentStateEnum.REGISTERED]: ['approve', 'reject'],
+    [CatalogueEnrollmentStateEnum.REQUEST_SENT]: ['approve', 'reject'],
+    [CatalogueEnrollmentStateEnum.APPROVED]: ['enroll', 'reject'],
+    [CatalogueEnrollmentStateEnum.ENROLLED]: ['revoke', 'approve'],
+    [CatalogueEnrollmentStateEnum.REJECTED]: ['approve'],
+    [CatalogueEnrollmentStateEnum.REVOKED]: ['enroll'],
+  };
+
+  private validateStateTransition(currentCode: string | undefined, action: 'approve' | 'reject' | 'enroll' | 'revoke'): void {
+    if (!currentCode) return;
+
+    const allowed = this.allowedStateTransitions[currentCode] ?? [];
+
+    if (!allowed.includes(action)) {
+      throw new BadRequestException(`No se puede pasar del estado "${currentCode}" a la acción "${action}"`);
+    }
+  }
+
   // ─── Acciones de estado (registrada → aprobada → matriculada / rechazada / anulada) ──
   async approve(id: string, userId: string, payload: UpdateEnrollmentDto): Promise<EnrollmentEntity> {
     const enrollment = await this.repository.findOne({
@@ -571,6 +591,8 @@ export class EnrollmentsService {
     if (!enrollment) {
       throw new NotFoundException('Matrícula no encontrada');
     }
+
+    this.validateStateTransition(enrollment.enrollmentStates?.[0]?.state?.code, 'approve');
 
     const catalogues = (await this.cataloguesService.findCache());
 
@@ -617,6 +639,8 @@ export class EnrollmentsService {
       throw new NotFoundException('Matrícula no encontrada');
     }
 
+    this.validateStateTransition(enrollment.enrollmentStates?.[0]?.state?.code, 'reject');
+
     const catalogues = (await this.cataloguesService.findCache());
 
     const rejectedState = catalogues.find(
@@ -656,7 +680,7 @@ export class EnrollmentsService {
     const enrollment = await this.repository.findOne({
       relations: {
         enrollmentDetails: { enrollmentDetailStates: true },
-        enrollmentStates: true,
+        enrollmentStates: { state: true },
         schoolPeriod: true,
         career: true,
         academicPeriod: true,
@@ -668,6 +692,8 @@ export class EnrollmentsService {
     if (!enrollment) {
       throw new NotFoundException('Matrícula no encontrada');
     }
+
+    this.validateStateTransition(enrollment.enrollmentStates?.[0]?.state?.code, 'enroll');
 
     enrollment.date = new Date();
     enrollment.code = `${enrollment.schoolPeriod.code}-${enrollment.career.acronym}-${enrollment.student.user.identification}`;
@@ -715,13 +741,15 @@ export class EnrollmentsService {
 
   async revoke(id: string, userId: string, payload: UpdateEnrollmentDto): Promise<EnrollmentEntity> {
     const enrollment = await this.repository.findOne({
-      relations: { enrollmentDetails: { enrollmentDetailStates: true }, enrollmentStates: true },
+      relations: { enrollmentDetails: { enrollmentDetailStates: true }, enrollmentStates: { state: true } },
       where: { id },
     });
 
     if (!enrollment) {
       throw new NotFoundException('Matrícula no encontrada');
     }
+
+    this.validateStateTransition(enrollment.enrollmentStates?.[0]?.state?.code, 'revoke');
 
     const catalogues = (await this.cataloguesService.findCache());
 
