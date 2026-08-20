@@ -16,6 +16,7 @@ import { EnrollmentDetailStatesService } from '@modules/core/roles/secretary/ser
 import { CoreCataloguesService } from '@modules/core/roles/secretary/services/core-catalogues.service';
 import { TeacherDistributionsStubService } from '@modules/core/roles/secretary/services/_stubs/teacher-distributions.stub.service';
 import { SubjectsStubService } from '@modules/core/roles/secretary/services/_stubs/subjects.stub.service';
+import { SchoolPeriodsService } from '@modules/core/roles/secretary/services/school-periods.service';
 import { ServiceResponseHttpInterface } from '@utils/interfaces';
 
 @Injectable()
@@ -31,6 +32,9 @@ export class EnrollmentDetailsService {
     private readonly cataloguesService: CoreCataloguesService,
     private readonly teacherDistributionsService: TeacherDistributionsStubService,
     private readonly subjectsService: SubjectsStubService,
+    // Solo se usa para saber cuál es el período lectivo abierto actualmente, al
+    // validar que no se edite una asignatura de un período ya cerrado.
+    private readonly schoolPeriodsService: SchoolPeriodsService,
   ) { }
 
   // ─── CRUD y flujo de solicitud ─────────────────────────────────────────────────
@@ -82,13 +86,7 @@ export class EnrollmentDetailsService {
       );
     }
 
-    // REGLA DE NEGOCIO NUEVA: cupo real por asignatura+paralelo+jornada+período,
-    // igual que el módulo de Estudiante (confirmado comparando su código) — antes
-    // esto no se validaba en absoluto en el flujo de "Crear Asignatura" de
-    // Secretaría (career_parallels solo se usaba en sendRegistration(), y nunca
-    // en este endpoint). Reemplaza el enfoque viejo (cupo por carrera, sin
-    // importar la asignatura) por uno real: cupo por la distribución docente
-    // específica de esa asignatura.
+    // cupo real por asignatura+paralelo+jornada+período,
     const teacherDistribution = await this.teacherDistributionsService.findBySubjectParallelWorkdaySchoolPeriod(
       payload.subject.id,
       payload.parallel.id,
@@ -206,6 +204,32 @@ export class EnrollmentDetailsService {
 
     if (!enrollmentDetail) {
       throw new NotFoundException('Detalle de matrícula no encontrado');
+    }
+
+    // REGLA DE NEGOCIO NUEVA: el front ya bloquea esto visualmente (isReadOnly en
+    // enrollment-detail-form), pero el backend nunca lo revisaba — se podía editar
+    // una asignatura de un período cerrado o de una matrícula anulada/rechazada
+    // llamando al endpoint directo (confirmado con Postman). Misma lógica que el
+    // front: la matrícula padre debe pertenecer al período abierto actual, y no
+    // estar anulada ni rechazada.
+    const parentEnrollment = await this.enrollmentRepository.findOne({
+      relations: { enrollmentState: { state: true } },
+      where: { id: enrollmentDetail.enrollmentId },
+    });
+
+    if (parentEnrollment) {
+      const openPeriod = await this.schoolPeriodsService.findOpenSchoolPeriod();
+      const isOpenPeriod = !openPeriod || parentEnrollment.schoolPeriodId === openPeriod.id;
+
+      const parentCode = parentEnrollment.enrollmentState?.state?.code;
+      const parentNotRevoked =
+        parentCode !== CatalogueEnrollmentStateEnum.REVOKED && parentCode !== CatalogueEnrollmentStateEnum.REJECTED;
+
+      if (!isOpenPeriod || !parentNotRevoked) {
+        throw new BadRequestException(
+          'No se puede editar una asignatura de un período cerrado o de una matrícula anulada/rechazada.',
+        );
+      }
     }
 
     if (payload.parallel) enrollmentDetail.parallelId = payload.parallel.id;
