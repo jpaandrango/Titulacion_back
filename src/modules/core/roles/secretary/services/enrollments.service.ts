@@ -8,8 +8,8 @@ import { EnrollmentDetailsService } from '@modules/core/roles/secretary/services
 import { EnrollmentDetailStatesService } from '@modules/core/roles/secretary/services/enrollment-detail-states.service';
 import { CoreCataloguesService } from '@modules/core/roles/secretary/services/core-catalogues.service';
 import { SchoolPeriodsService } from '@modules/core/roles/secretary/services/school-periods.service';
-import { CareerParallelsService } from '@modules/core/roles/secretary/services/career-parallels.service';
 import { SubjectsStubService } from '@modules/core/roles/secretary/services/_stubs/subjects.stub.service';
+import { TeacherDistributionsStubService } from '@modules/core/roles/secretary/services/_stubs/teacher-distributions.stub.service';
 import {
   CatalogueEnrollmentStateEnum,
   CatalogueEnrollmentsAcademicStateEnum,
@@ -31,8 +31,12 @@ export class EnrollmentsService {
     private readonly enrollmentDetailStatesService: EnrollmentDetailStatesService,
     private readonly cataloguesService: CoreCataloguesService,
     private readonly schoolPeriodsService: SchoolPeriodsService,
-    private readonly careerParallelsService: CareerParallelsService,
     private readonly subjectsService: SubjectsStubService,
+    // REEMPLAZA a CareerParallelsService — el cupo real ahora se valida por
+    // asignatura+paralelo+jornada+período (distribución docente), no por
+    // carrera+paralelo+jornada+período académico. Mismo enfoque que ya usa el
+    // módulo de Estudiante (confirmado comparando su código real).
+    private readonly teacherDistributionsService: TeacherDistributionsStubService,
   ) { }
 
   // ─── CRUD ───────────────────────────────────────────────────────────────────
@@ -376,25 +380,12 @@ export class EnrollmentsService {
       },
     });
 
-    const enrollmentTotal = await this.findTotalEnrollments(
-      enrollment?.id,
-      payload.career.id,
-      payload.parallel.id,
-      payload.schoolPeriod.id,
-      payload.workday.id,
-      payload.academicPeriod.id,
-    );
-
-    const capacity = await this.careerParallelsService.findCapacityByCareer(
-      payload.career.id,
-      payload.parallel.id,
-      payload.workday.id,
-      payload.academicPeriod.id,
-    );
-
-    if (capacity <= enrollmentTotal) {
-      throw new BadRequestException(`No existen cupos disponibles en la jornada ${payload.workday.name} con en el paralelo ${payload.parallel.name}`);
-    }
+    // REGLA DE NEGOCIO: el cupo por carrera+paralelo+jornada (career_parallels) se
+    // reemplazó por cupo real por asignatura+paralelo+jornada (distribución
+    // docente) — se valida más abajo, dentro del bucle, una vez por cada
+    // asignatura que se está pidiendo, en vez de una sola vez acá antes de crear
+    // la matrícula. Portado del módulo de Estudiante, confirmado comparando su
+    // código real (career_parallels no lo usa ningún otro módulo del proyecto).
 
     if (!enrollment) {
       enrollment = this.repository.create();
@@ -407,8 +398,8 @@ export class EnrollmentsService {
     enrollment.studentId = payload.student.id;
     enrollment.workdayId = payload.workday.id;
     enrollment.applicationsAt = new Date();
-    // FIX: sendRegistration() nunca calculaba el "Tipo de Matrícula" 
-    // FIX 2: getType() necesita el período lectivo COMPLETO 
+    // FIX: sendRegistration() nunca calculaba el "Tipo de Matrícula"
+    // FIX 2: getType() necesita el período lectivo COMPLETO
     const fullSchoolPeriod = await this.schoolPeriodsService.findOne(payload.schoolPeriod.id);
     enrollment.typeId = (await this.getType(fullSchoolPeriod)).id;
 
@@ -435,6 +426,31 @@ export class EnrollmentsService {
     }
 
     for (const item of payload.enrollmentDetails) {
+      // REGLA DE NEGOCIO NUEVA: cupo real por asignatura, portado del módulo de
+      // Estudiante — reemplaza el chequeo viejo de career_parallels que corría
+      // una sola vez antes de este bucle.
+      const teacherDistribution = await this.teacherDistributionsService.findBySubjectParallelWorkdaySchoolPeriod(
+        item.id,
+        enrollment.parallelId,
+        enrollment.workdayId,
+        enrollment.schoolPeriodId,
+      );
+
+      if (!teacherDistribution) {
+        throw new BadRequestException('No se encontró una distribución docente para la materia seleccionada.');
+      }
+
+      const enrolledCount = await this.enrollmentDetailsService.countStudentsInSubject(
+        item.id,
+        enrollment.parallelId,
+        enrollment.workdayId,
+        enrollment.schoolPeriodId,
+      );
+
+      if (teacherDistribution.capacity !== null && enrolledCount >= teacherDistribution.capacity) {
+        throw new BadRequestException('No existen cupos disponibles para la materia solicitada.');
+      }
+
       let enrollmentNumber = await this.calculateEnrollmentDetailNumber(payload.student.id, item.id);
       enrollmentNumber = enrollmentNumber + 1;
 

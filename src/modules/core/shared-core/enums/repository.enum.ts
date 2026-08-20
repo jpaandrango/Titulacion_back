@@ -15,5 +15,4 @@ export enum CoreRepositoryEnum {
   // common.catalogues, sino en core.catalogues. Ver CoreCataloguesService.
   coreCatalogueRepository = 'coreCatalogueRepository',
   institutionRepository = 'institutionRepository',
-  careerParallelRepository = 'careerParallelRepository',
 }

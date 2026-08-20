@@ -11,7 +11,6 @@ import {
   EnrollmentReportsService,
   CoreCataloguesService,
   SchoolPeriodsService,
-  CareerParallelsService,
   SubjectsStubService,
   TeacherDistributionsStubService,
 } from '@modules/core/roles/secretary/services';
@@ -44,10 +43,9 @@ import {
     // Servicios reales que antes eran stub
     CoreCataloguesService,
     SchoolPeriodsService,
-    CareerParallelsService,
+    TeacherDistributionsStubService,
     // Siguen siendo stubs (dependencias de otros módulos)
     SubjectsStubService,
-    TeacherDistributionsStubService,
   ],
   exports: [
     EnrollmentsService,
@@ -56,7 +54,6 @@ import {
     EnrollmentDetailStatesService,
     CoreCataloguesService,
     SchoolPeriodsService,
-    CareerParallelsService,
   ],
 })
-export class SecretaryModule {}
+export class SecretaryModule { }

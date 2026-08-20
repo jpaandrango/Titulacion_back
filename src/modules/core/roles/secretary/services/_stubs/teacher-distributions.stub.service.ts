@@ -4,9 +4,14 @@ import { TeacherDistributionEntity } from '@modules/core/entities';
 import { CoreRepositoryEnum } from '@modules/core/shared-core/enums';
 
 /**
- * STUB — pertenece al módulo de "Distribución de Docentes" (teacher-distributions),
- * no a Secretaría. Implementa SOLO findOne, que es lo que EnrollmentDetailsService necesita.
- * Reemplazar por el TeacherDistributionsService oficial cuando exista.
+ * Consulta distribuciones docentes (core.teacher_distributions) — la fuente real de
+ * cupo por asignatura+paralelo+jornada+período, usada tanto por Secretaría como por
+ * el módulo de Estudiante (confirmado comparando ambos: mismo patrón).
+ *
+ * Sigue viviendo bajo _stubs/ y con el sufijo "Stub" en el nombre de la clase — no
+ * se renombró para no arrastrar el cambio de import a todos los archivos que lo
+ * inyectan (secretary.module.ts, enrollments.service.ts, enrollment-details.service.ts).
+ * Si se quiere renombrar más adelante, es un cambio mecánico de nombre nada más.
  */
 @Injectable()
 export class TeacherDistributionsStubService {
@@ -26,5 +31,20 @@ export class TeacherDistributionsStubService {
     }
 
     return entity;
+  }
+
+  // Busca la distribución docente real para una combinación puntual — el
+  // reemplazo de CareerParallelsService.findCapacityByCareer(). Devuelve null (no
+  // lanza) si no existe, para que el que llama decida el mensaje de error exacto
+  // según el contexto (sendRegistration, create de asignatura, etc.).
+  async findBySubjectParallelWorkdaySchoolPeriod(
+    subjectId: string,
+    parallelId: string,
+    workdayId: string,
+    schoolPeriodId: string,
+  ): Promise<TeacherDistributionEntity | null> {
+    return await this.repository.findOne({
+      where: { subjectId, parallelId, workdayId, schoolPeriodId },
+    });
   }
 }

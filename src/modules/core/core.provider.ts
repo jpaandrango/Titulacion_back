@@ -11,7 +11,6 @@ import {
   SubjectEntity,
   TeacherDistributionEntity,
   InstitutionEntity,
-  CareerParallelEntity,
   CatalogueEntity as CoreCatalogueEntity,
 } from '@modules/core/entities';
 import { ConfigEnum } from '@utils/enums';
@@ -74,12 +73,6 @@ export const coreProviders = [
   {
     provide: CoreRepositoryEnum.coreCatalogueRepository,
     useFactory: (dataSource: DataSource) => dataSource.getRepository(CoreCatalogueEntity),
-    inject: [ConfigEnum.PG_DATA_SOURCE],
-  },
-  // ─── Cupos por paralelo (entity nueva, no toca career.entity.ts) ──────────────
-  {
-    provide: CoreRepositoryEnum.careerParallelRepository,
-    useFactory: (dataSource: DataSource) => dataSource.getRepository(CareerParallelEntity),
     inject: [ConfigEnum.PG_DATA_SOURCE],
   },
 ];

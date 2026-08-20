@@ -6,7 +6,6 @@ export * from './enrollment-sql.service';
 export * from './enrollment-reports.service';
 export * from './core-catalogues.service';
 export * from './school-periods.service';
-export * from './career-parallels.service';
 
 export * from './_stubs/subjects.stub.service';
 export * from './_stubs/teacher-distributions.stub.service';

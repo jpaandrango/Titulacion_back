@@ -5,7 +5,7 @@ import {
   FilterEnrollmentsDetailDto,
   UpdateEnrollmentsDetailDto,
 } from '@modules/core/roles/secretary/dto';
-import { CatalogueEntity, EnrollmentDetailEntity, EnrollmentEntity } from '@modules/core/entities';
+import { CatalogueEntity, EnrollmentDetailEntity, EnrollmentDetailStateEntity, EnrollmentEntity } from '@modules/core/entities';
 import {
   CatalogueEnrollmentStateEnum,
   CatalogueCoreTypeEnum,
@@ -82,6 +82,35 @@ export class EnrollmentDetailsService {
       );
     }
 
+    // REGLA DE NEGOCIO NUEVA: cupo real por asignatura+paralelo+jornada+período,
+    // igual que el módulo de Estudiante (confirmado comparando su código) — antes
+    // esto no se validaba en absoluto en el flujo de "Crear Asignatura" de
+    // Secretaría (career_parallels solo se usaba en sendRegistration(), y nunca
+    // en este endpoint). Reemplaza el enfoque viejo (cupo por carrera, sin
+    // importar la asignatura) por uno real: cupo por la distribución docente
+    // específica de esa asignatura.
+    const teacherDistribution = await this.teacherDistributionsService.findBySubjectParallelWorkdaySchoolPeriod(
+      payload.subject.id,
+      payload.parallel.id,
+      payload.workday.id,
+      enrollment.schoolPeriodId,
+    );
+
+    if (!teacherDistribution) {
+      throw new BadRequestException('No se encontró una distribución docente para la asignatura seleccionada.');
+    }
+
+    const enrolledCount = await this.countStudentsInSubject(
+      payload.subject.id,
+      payload.parallel.id,
+      payload.workday.id,
+      enrollment.schoolPeriodId,
+    );
+
+    if (teacherDistribution.capacity !== null && enrolledCount >= teacherDistribution.capacity) {
+      throw new BadRequestException('No existen cupos disponibles para la asignatura seleccionada.');
+    }
+
     const newEnrollmentDetail = this.repository.create();
 
     newEnrollmentDetail.enrollmentId = payload.enrollmentId;
@@ -95,7 +124,14 @@ export class EnrollmentDetailsService {
     const savedEnrollmentDetail = await this.repository.save(newEnrollmentDetail);
 
     // la matrícula limitada a 1 asignatura activa a la
-    // vez, sus campos compartidos (tipo, paralelo, horario, periodo académico) 
+    // vez, sus campos compartidos (tipo, paralelo, horario, periodo académico)
+    const subject = await this.subjectsService.findOne(payload.subject.id);
+    enrollment.typeId = payload.type.id;
+    enrollment.parallelId = payload.parallel.id;
+    enrollment.workdayId = payload.workday.id;
+    enrollment.academicPeriodId = subject.academicPeriodId;
+    await this.enrollmentRepository.save(enrollment);
+
     const requestSentState = catalogues.find(
       (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REQUEST_SENT && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
     )!;
@@ -181,7 +217,7 @@ export class EnrollmentDetailsService {
     if (payload.finalAttendance) enrollmentDetail.finalAttendance = payload.finalAttendance;
     if (payload.academicState) enrollmentDetail.academicState = payload.academicState as CatalogueEntity;
 
-    // el estado académico debe ser coherente con la nota y la asistencia 
+    // el estado académico debe ser coherente con la nota y la asistencia
     const effectiveAcademicStateId = payload.academicState?.id ?? enrollmentDetail.academicStateId;
     let academicStateCode: string | undefined;
 
@@ -339,6 +375,55 @@ export class EnrollmentDetailsService {
     });
 
     return total.length;
+  }
+
+  // REGLA DE NEGOCIO NUEVA: cuenta cuántos estudiantes ya ocupan cupo real en una
+  // asignatura+paralelo+jornada+período — portado del módulo de Estudiante
+  // (confirmado que usan exactamente este patrón). Solo cuenta 'registered' y
+  // 'enrolled' (anuladas/rechazadas no ocupan cupo). Usa una subconsulta con
+  // DISTINCT ON para sacar el último estado real de cada asignatura, ignorando
+  // filas con soft-delete — el mismo ajuste que ya aplicamos a mano en SQL cuando
+  // encontramos que enrollment_states/enrollment_detail_states guardan todo el
+  // historial, no solo el estado actual.
+  async countStudentsInSubject(subjectId: string, parallelId: string, workdayId: string, schoolPeriodId: string): Promise<number> {
+    const catalogues = await this.cataloguesService.findCache();
+
+    const registeredState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REGISTERED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    );
+
+    const enrolledState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.ENROLLED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    );
+
+    if (!registeredState || !enrolledState) {
+      throw new BadRequestException('No se encontraron los estados de matrícula válidos');
+    }
+
+    const lastStateQuery = this.repository.manager
+      .createQueryBuilder()
+      .subQuery()
+      .select('DISTINCT ON (eds.enrollment_detail_id) eds.enrollment_detail_id', 'enrollment_detail_id')
+      .addSelect('eds.state_id', 'state_id')
+      .from(EnrollmentDetailStateEntity, 'eds')
+      .where('eds.deleted_at IS NULL')
+      .orderBy('eds.enrollment_detail_id')
+      .addOrderBy('eds.created_at', 'DESC')
+      .getQuery();
+
+    const result = await this.repository
+      .createQueryBuilder('detail')
+      .innerJoin('detail.enrollment', 'enrollment')
+      .innerJoin(`(${lastStateQuery})`, 'last_state', 'last_state.enrollment_detail_id = detail.id')
+      .where('detail.subjectId = :subjectId', { subjectId })
+      .andWhere('detail.parallelId = :parallelId', { parallelId })
+      .andWhere('detail.workdayId = :workdayId', { workdayId })
+      .andWhere('enrollment.schoolPeriodId = :schoolPeriodId', { schoolPeriodId })
+      .andWhere('last_state.state_id IN (:...states)', { states: [registeredState.id, enrolledState.id] })
+      .select('COUNT(DISTINCT detail.id)', 'count')
+      .getRawOne<{ count: string }>();
+
+    return Number(result?.count ?? 0);
   }
 
   // ─── Validación de transiciones de estado ──────────────────────────────────
