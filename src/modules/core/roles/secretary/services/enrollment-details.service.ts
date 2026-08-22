@@ -13,6 +13,7 @@ import {
   CoreRepositoryEnum,
 } from '@modules/core/shared-core/enums';
 import { EnrollmentDetailStatesService } from '@modules/core/roles/secretary/services/enrollment-detail-states.service';
+import { EnrollmentStatesService } from '@modules/core/roles/secretary/services/enrollment-states.service';
 import { CoreCataloguesService } from '@modules/core/roles/secretary/services/core-catalogues.service';
 import { TeacherDistributionsStubService } from '@modules/core/roles/secretary/services/_stubs/teacher-distributions.stub.service';
 import { SubjectsStubService } from '@modules/core/roles/secretary/services/_stubs/subjects.stub.service';
@@ -35,6 +36,11 @@ export class EnrollmentDetailsService {
     // Solo se usa para saber cuál es el período lectivo abierto actualmente, al
     // validar que no se edite una asignatura de un período ya cerrado.
     private readonly schoolPeriodsService: SchoolPeriodsService,
+    // cascada de estados asignatura → matrícula. Solo se
+    // usa para tocar el estado de la matrícula padre directo (removeAll + create),
+    // sin llamar nunca al enrollmentsService.approve()/enroll()/etc — así se evita
+    // por completo el riesgo de ciclo 
+    private readonly enrollmentsStateService: EnrollmentStatesService,
   ) { }
 
   // ─── CRUD y flujo de solicitud ─────────────────────────────────────────────────
@@ -206,12 +212,8 @@ export class EnrollmentDetailsService {
       throw new NotFoundException('Detalle de matrícula no encontrado');
     }
 
-    // REGLA DE NEGOCIO NUEVA: el front ya bloquea esto visualmente (isReadOnly en
-    // enrollment-detail-form), pero el backend nunca lo revisaba — se podía editar
-    // una asignatura de un período cerrado o de una matrícula anulada/rechazada
-    // llamando al endpoint directo (confirmado con Postman). Misma lógica que el
-    // front: la matrícula padre debe pertenecer al período abierto actual, y no
-    // estar anulada ni rechazada.
+    // el front ya bloquea esto visualmente (isReadOnly en
+    // enrollment-detail-form), pero el backend nunca lo revisaba 
     const parentEnrollment = await this.enrollmentRepository.findOne({
       relations: { enrollmentState: { state: true } },
       where: { id: enrollmentDetail.enrollmentId },
@@ -322,12 +324,21 @@ export class EnrollmentDetailsService {
     return enrollmentDetails;
   }
 
-  async remove(id: string): Promise<EnrollmentDetailEntity> {
+  async remove(id: string, userId: string): Promise<EnrollmentDetailEntity> {
     const enrollmentDetail = await this.repository.findOneBy({ id });
 
     if (!enrollmentDetail) {
       throw new NotFoundException('enrollmentDetail not found');
     }
+
+    // eliminar la única asignatura activa retrocede la
+    // matrícula a "Aprobada"
+    await this.cascadeToParentEnrollment(
+      enrollmentDetail.enrollmentId,
+      CatalogueEnrollmentStateEnum.APPROVED,
+      userId,
+      'Retrocedida automáticamente — la asignatura activa fue eliminada',
+    );
 
     return await this.repository.softRemove(enrollmentDetail);
   }
@@ -401,7 +412,7 @@ export class EnrollmentDetailsService {
     return total.length;
   }
 
-  // cuenta cuántos estudiantes ya ocupan cupo real en una asignatura+paralelo+jornada+período 
+  // cuenta cuántos estudiantes ya ocupan cupo real en una asignatura+paralelo+jornada+período
   async countStudentsInSubject(subjectId: string, parallelId: string, workdayId: string, schoolPeriodId: string): Promise<number> {
     const catalogues = await this.cataloguesService.findCache();
 
@@ -463,6 +474,37 @@ export class EnrollmentDetailsService {
     }
   }
 
+  // cascada de estados asignatura → matrícula.
+  private async cascadeToParentEnrollment(
+    enrollmentId: string,
+    targetStateCode: string,
+    userId: string,
+    observation: string | null | undefined,
+  ): Promise<void> {
+    const enrollment = await this.enrollmentRepository.findOne({
+      relations: { enrollmentStates: true },
+      where: { id: enrollmentId },
+    });
+
+    if (!enrollment) return;
+
+    const catalogues = await this.cataloguesService.findCache();
+
+    const targetState = catalogues.find(
+      (catalogue) => catalogue.code === targetStateCode && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    )!;
+
+    await this.enrollmentsStateService.removeAll(enrollment.enrollmentStates);
+
+    await this.enrollmentsStateService.create({
+      enrollmentId: enrollment.id,
+      stateId: targetState.id,
+      userId: userId,
+      date: new Date(),
+      observation: observation ?? '',
+    });
+  }
+
   // ─── Acciones de estado (misma lógica que Enrollments, a nivel de asignatura) ──
   async approve(id: string, userId: string, payload: UpdateEnrollmentsDetailDto): Promise<EnrollmentDetailEntity> {
     const enrollmentDetail = await this.repository.findOne({
@@ -491,6 +533,8 @@ export class EnrollmentDetailsService {
       date: new Date(),
       observation: payload.observation,
     });
+
+    await this.cascadeToParentEnrollment(enrollmentDetail.enrollmentId, CatalogueEnrollmentStateEnum.APPROVED, userId, payload.observation);
 
     return enrollmentDetail;
   }
@@ -522,6 +566,10 @@ export class EnrollmentDetailsService {
       date: new Date(),
       observation: payload.observation,
     });
+
+    // Rechazar la asignatura NO copia "Rechazada" a la matrícula (ese estado
+    // bloquearía "Crear") — retrocede a Aprobada, igual que Anular/Eliminar.
+    await this.cascadeToParentEnrollment(enrollmentDetail.enrollmentId, CatalogueEnrollmentStateEnum.APPROVED, userId, payload.observation);
 
     return enrollmentDetail;
   }
@@ -558,6 +606,8 @@ export class EnrollmentDetailsService {
       observation: payload.observation,
     });
 
+    await this.cascadeToParentEnrollment(enrollmentDetail.enrollmentId, CatalogueEnrollmentStateEnum.ENROLLED, userId, payload.observation);
+
     return enrollmentDetail;
   }
 
@@ -588,6 +638,10 @@ export class EnrollmentDetailsService {
       date: new Date(),
       observation: payload.observation,
     });
+
+    // Anular la asignatura NO copia "Anulada" a la matrícula (bloquearía "Crear")
+    // — retrocede a Aprobada, para que Secretaría pueda crear la reemplazante.
+    await this.cascadeToParentEnrollment(enrollmentDetail.enrollmentId, CatalogueEnrollmentStateEnum.APPROVED, userId, payload.observation);
 
     return enrollmentDetail;
   }

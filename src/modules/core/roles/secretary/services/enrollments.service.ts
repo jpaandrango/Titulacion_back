@@ -378,7 +378,7 @@ export class EnrollmentsService {
 
     // cupo por carrera+paralelo+jornada (career_parallels) se
     // reemplazó por cupo real por asignatura+paralelo+jornada (distribución
-    // docente) 
+    // docente)
     if (!enrollment) {
       enrollment = this.repository.create();
     }
@@ -418,9 +418,7 @@ export class EnrollmentsService {
     }
 
     for (const item of payload.enrollmentDetails) {
-      // REGLA DE NEGOCIO NUEVA: cupo real por asignatura, portado del módulo de
-      // Estudiante — reemplaza el chequeo viejo de career_parallels que corría
-      // una sola vez antes de este bucle.
+      // cupo real por asignatura
       const teacherDistribution = await this.teacherDistributionsService.findBySubjectParallelWorkdaySchoolPeriod(
         item.id,
         enrollment.parallelId,
@@ -703,6 +701,26 @@ export class EnrollmentsService {
 
     this.validateStateTransition(enrollment.enrollmentStates?.[0]?.state?.code, 'enroll');
 
+    const catalogues = (await this.cataloguesService.findCache());
+
+    // no se puede matricular una matrícula sin ninguna
+    // asignatura activa asociada 
+    const revokedState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REVOKED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    )!;
+    const rejectedState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REJECTED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    )!;
+
+    const hasActiveDetail = enrollment.enrollmentDetails.some((item) => {
+      const currentStateId = item.enrollmentDetailStates?.[0]?.stateId;
+      return !!currentStateId && currentStateId !== revokedState.id && currentStateId !== rejectedState.id;
+    });
+
+    if (!hasActiveDetail) {
+      throw new BadRequestException('No se puede matricular una matrícula sin una asignatura activa asociada.');
+    }
+
     enrollment.date = new Date();
     enrollment.code = `${enrollment.schoolPeriod.code}-${enrollment.career.acronym}-${enrollment.student.user.identification}`;
     enrollment.folio = `${enrollment.schoolPeriod.code}-${enrollment.career.acronym}-${enrollment.academicPeriod.code}`;
@@ -710,8 +728,6 @@ export class EnrollmentsService {
     await this.repository.save(enrollment);
 
     await this.enrollmentsStateService.removeAll(enrollment.enrollmentStates);
-
-    const catalogues = (await this.cataloguesService.findCache());
 
     const enrolledState = catalogues.find(
       (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.ENROLLED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,

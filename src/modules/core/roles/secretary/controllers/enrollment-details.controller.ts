@@ -75,8 +75,8 @@ export class EnrollmentDetailsController {
   @ApiOperation({ summary: 'Delete Enrollment Detail' })
   @Delete(':id')
   @HttpCode(HttpStatus.CREATED)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<ResponseHttpInterface> {
-    const serviceResponse = await this.enrollmentDetailsService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @User() user: UserEntity): Promise<ResponseHttpInterface> {
+    const serviceResponse = await this.enrollmentDetailsService.remove(id, user.id);
     return {
       data: serviceResponse,
       message: 'Detalle de matrícula eliminado',
