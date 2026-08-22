@@ -127,6 +127,22 @@ export class EnrollmentsController {
     };
   }
 
+  @ApiOperation({ summary: 'Find Required Academic Period For Student' })
+  @Get('required-academic-period/:studentId/:careerId')
+  @HttpCode(HttpStatus.OK)
+  async findRequiredAcademicPeriod(
+    @Param('studentId', ParseUUIDPipe) studentId: string,
+    @Param('careerId', ParseUUIDPipe) careerId: string,
+  ): Promise<ResponseHttpInterface> {
+    const serviceResponse = await this.enrollmentsService.findRequiredAcademicPeriodForStudent(studentId, careerId);
+
+    return {
+      data: serviceResponse,
+      message: 'Nivel requerido calculado',
+      title: 'Success',
+    };
+  }
+
   // ─── Flujo de solicitud (registro → envío) ────────────────────────────────────
   @ApiOperation({ summary: 'Send Registration' })
   @Post('send-registration')

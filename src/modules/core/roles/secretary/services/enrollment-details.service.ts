@@ -401,14 +401,7 @@ export class EnrollmentDetailsService {
     return total.length;
   }
 
-  // REGLA DE NEGOCIO NUEVA: cuenta cuántos estudiantes ya ocupan cupo real en una
-  // asignatura+paralelo+jornada+período — portado del módulo de Estudiante
-  // (confirmado que usan exactamente este patrón). Solo cuenta 'registered' y
-  // 'enrolled' (anuladas/rechazadas no ocupan cupo). Usa una subconsulta con
-  // DISTINCT ON para sacar el último estado real de cada asignatura, ignorando
-  // filas con soft-delete — el mismo ajuste que ya aplicamos a mano en SQL cuando
-  // encontramos que enrollment_states/enrollment_detail_states guardan todo el
-  // historial, no solo el estado actual.
+  // cuenta cuántos estudiantes ya ocupan cupo real en una asignatura+paralelo+jornada+período 
   async countStudentsInSubject(subjectId: string, parallelId: string, workdayId: string, schoolPeriodId: string): Promise<number> {
     const catalogues = await this.cataloguesService.findCache();
 

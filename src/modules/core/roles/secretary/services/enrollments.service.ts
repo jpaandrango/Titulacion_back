@@ -32,10 +32,6 @@ export class EnrollmentsService {
     private readonly cataloguesService: CoreCataloguesService,
     private readonly schoolPeriodsService: SchoolPeriodsService,
     private readonly subjectsService: SubjectsStubService,
-    // REEMPLAZA a CareerParallelsService — el cupo real ahora se valida por
-    // asignatura+paralelo+jornada+período (distribución docente), no por
-    // carrera+paralelo+jornada+período académico. Mismo enfoque que ya usa el
-    // módulo de Estudiante (confirmado comparando su código real).
     private readonly teacherDistributionsService: TeacherDistributionsStubService,
   ) { }
 
@@ -380,13 +376,9 @@ export class EnrollmentsService {
       },
     });
 
-    // REGLA DE NEGOCIO: el cupo por carrera+paralelo+jornada (career_parallels) se
+    // cupo por carrera+paralelo+jornada (career_parallels) se
     // reemplazó por cupo real por asignatura+paralelo+jornada (distribución
-    // docente) — se valida más abajo, dentro del bucle, una vez por cada
-    // asignatura que se está pidiendo, en vez de una sola vez acá antes de crear
-    // la matrícula. Portado del módulo de Estudiante, confirmado comparando su
-    // código real (career_parallels no lo usa ningún otro módulo del proyecto).
-
+    // docente) 
     if (!enrollment) {
       enrollment = this.repository.create();
     }
@@ -913,27 +905,35 @@ export class EnrollmentsService {
         catalogue.code === CatalogueEnrollmentsAcademicStateEnum.APPROVED && catalogue.type === CatalogueCoreTypeEnum.enrollments_academic_state,
     )!;
 
-    const enrollments = await this.repository.find({
-      relations: {
-        enrollmentDetails: {
-          subject: { type: true, academicPeriod: true },
-          academicState: true,
-        },
-      },
-      where: { careerId, studentId, enrollmentDetails: { academicStateId: approvedState.id } },
-      order: { schoolPeriod: { startedAt: 'asc' }, enrollmentDetails: { subject: { code: 'asc' } } },
+    const result = await this.repository
+      .createQueryBuilder('enrollment')
+      .innerJoin('enrollment.enrollmentDetails', 'detail')
+      .innerJoin('detail.subject', 'subject')
+      .innerJoin('subject.academicPeriod', 'academicPeriod')
+      .where('enrollment.studentId = :studentId', { studentId })
+      .andWhere('enrollment.careerId = :careerId', { careerId })
+      .andWhere('detail.academicStateId = :approvedStateId', { approvedStateId: approvedState.id })
+      .andWhere('detail.deletedAt IS NULL')
+      .select('MAX(CAST(academicPeriod.code AS integer))', 'maxLevel')
+      .getRawOne<{ maxLevel: string | null }>();
+
+    return (result?.maxLevel ?? '0').toString();
+  }
+
+  // determina qué nivel le corresponde tomar al estudiante a continuación.
+  async findRequiredAcademicPeriodForStudent(studentId: string, careerId: string): Promise<string | null> {
+    const anyEnrollment = await this.repository.findOne({
+      where: { careerId, studentId },
     });
 
-    let lastAcademicPeriod = 0;
-
-    for (const enrollment of enrollments) {
-      for (const enrollmentDetail of enrollment.enrollmentDetails) {
-        if (parseInt(enrollmentDetail.subject.academicPeriod.code) > lastAcademicPeriod) {
-          lastAcademicPeriod = parseInt(enrollmentDetail.subject.academicPeriod.code);
-        }
-      }
+    if (!anyEnrollment) {
+      return null;
     }
 
-    return lastAcademicPeriod.toString();
+    const lastApprovedAcademicPeriod = await this.findLastEnrollmentDetailByStudent(studentId, careerId);
+    const requiredAcademicPeriod = parseInt(lastApprovedAcademicPeriod) + 1;
+
+    return requiredAcademicPeriod.toString();
   }
+
 }

@@ -17,13 +17,7 @@ import {
 
 /**
  * Rol: Secretaría — Matrícula (Enrollments + Enrollment Details + Reportes).
- *
- * Ver README de este módulo (o el resumen entregado junto al ZIP) para el detalle
- * de qué está portado 1:1 desde el backend viejo. School Periods y Career Parallels
- * ya son servicios reales (dejaron de ser stub). Siguen como STUB, pendientes de
- * reemplazo por el servicio oficial de otro módulo/rol: Subjects, Students, Teacher
- * Distributions.
- *
+ * 
  * NOTA: este módulo usa CoreCataloguesService (propio, sobre core.catalogues), NO
  * CataloguesService de @modules/common/catalogue — ver la nota en core-catalogues.service.ts.
  */
