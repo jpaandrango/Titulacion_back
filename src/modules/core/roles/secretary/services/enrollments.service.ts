@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { FindOptionsWhere, ILike, In, LessThan, Not, Repository } from 'typeorm';
 import { UserEntity } from '@auth/entities';
-import { CreateEnrollmentDto, FilterEnrollmentDto, UpdateEnrollmentDto } from '@modules/core/roles/secretary/dto';
+import { FilterEnrollmentDto, UpdateEnrollmentDto } from '@modules/core/roles/secretary/dto';
 import { CatalogueEntity, EnrollmentDetailEntity, EnrollmentEntity, SchoolPeriodEntity } from '@modules/core/entities';
 import { EnrollmentStatesService } from '@modules/core/roles/secretary/services/enrollment-states.service';
 import { EnrollmentDetailsService } from '@modules/core/roles/secretary/services/enrollment-details.service';
@@ -36,10 +36,10 @@ export class EnrollmentsService {
   ) { }
 
   // ─── CRUD ───────────────────────────────────────────────────────────────────
-  async create(payload: CreateEnrollmentDto): Promise<EnrollmentEntity> {
-    const newEnrollment = this.repository.create(payload);
-    return await this.repository.save(newEnrollment);
-  }
+  // FIX: se quitó create() — era un INSERT crudo sin estado inicial ni asignatura
+  // real, nunca usado por el front (el flujo real es sendRegistration()).
+  // Confirmado con Postman: dejaba crear matrículas duplicadas y rotas. Ver
+  // también enrollments.controller.ts, donde se quitó el endpoint POST '/'.
 
   async findAll(params?: FilterEnrollmentDto): Promise<ServiceResponseHttpInterface> {
     if (params && params.limit > 0 && params.page >= 0) {
@@ -418,7 +418,9 @@ export class EnrollmentsService {
     }
 
     for (const item of payload.enrollmentDetails) {
-      // cupo real por asignatura
+      // REGLA DE NEGOCIO NUEVA: cupo real por asignatura, portado del módulo de
+      // Estudiante — reemplaza el chequeo viejo de career_parallels que corría
+      // una sola vez antes de este bucle.
       const teacherDistribution = await this.teacherDistributionsService.findBySubjectParallelWorkdaySchoolPeriod(
         item.id,
         enrollment.parallelId,
@@ -703,22 +705,9 @@ export class EnrollmentsService {
 
     const catalogues = (await this.cataloguesService.findCache());
 
-    // no se puede matricular una matrícula sin ninguna
-    // asignatura activa asociada 
-    const revokedState = catalogues.find(
-      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REVOKED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-    )!;
-    const rejectedState = catalogues.find(
-      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REJECTED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
-    )!;
-
-    const hasActiveDetail = enrollment.enrollmentDetails.some((item) => {
-      const currentStateId = item.enrollmentDetailStates?.[0]?.stateId;
-      return !!currentStateId && currentStateId !== revokedState.id && currentStateId !== rejectedState.id;
-    });
-
-    if (!hasActiveDetail) {
-      throw new BadRequestException('No se puede matricular una matrícula sin una asignatura activa asociada.');
+    // no se puede matricular una matrícula sin ninguna asignatura activa asociada — 
+    if (enrollment.enrollmentDetails.length === 0) {
+      throw new BadRequestException('No se puede matricular una matrícula sin una asignatura asociada.');
     }
 
     enrollment.date = new Date();

@@ -3,7 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Auth, Roles, User } from '@auth/decorators';
 import { RoleEnum } from '@auth/enums';
 import { UserEntity } from '@auth/entities';
-import { CreateEnrollmentDto, FilterEnrollmentDto, UpdateEnrollmentDto } from '@modules/core/roles/secretary/dto';
+import { FilterEnrollmentDto, UpdateEnrollmentDto } from '@modules/core/roles/secretary/dto';
 import { EnrollmentEntity } from '@modules/core/entities';
 import { EnrollmentsService } from '@modules/core/roles/secretary/services/enrollments.service';
 import { EnrollmentDetailsService } from '@modules/core/roles/secretary/services/enrollment-details.service';
@@ -20,18 +20,6 @@ export class EnrollmentsController {
   ) { }
 
   // ─── CRUD ───────────────────────────────────────────────────────────────────
-  @ApiOperation({ summary: 'Create Enrollment' })
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  async create(@Body() payload: CreateEnrollmentDto): Promise<ResponseHttpInterface> {
-    const serviceResponse = await this.enrollmentsService.create(payload);
-
-    return {
-      data: serviceResponse,
-      message: 'Matrícula creada',
-      title: 'Creado',
-    };
-  }
 
   @ApiOperation({ summary: 'Find All Enrollments' })
   @Get()

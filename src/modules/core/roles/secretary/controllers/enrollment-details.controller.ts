@@ -60,6 +60,25 @@ export class EnrollmentDetailsController {
     };
   }
 
+  // FIX: esta ruta nunca existió — el front la llama desde hace tiempo
+  // (calculateEnrollmentNumber()) pero solo se disparaba en muy pocos casos
+  // (cambiar la asignatura al crear), así que nunca se había notado el 404.
+  @ApiOperation({ summary: 'Calculate Enrollment Number' })
+  @Get('calculate-number/:studentId/:subjectId')
+  @HttpCode(HttpStatus.OK)
+  async calculateNumber(
+    @Param('studentId', ParseUUIDPipe) studentId: string,
+    @Param('subjectId', ParseUUIDPipe) subjectId: string,
+  ): Promise<ResponseHttpInterface> {
+    const enrollmentDetails = await this.enrollmentDetailsService.calculateEnrollmentDetailNumber(studentId, subjectId);
+
+    return {
+      data: enrollmentDetails.length,
+      message: 'Número de matrícula calculado',
+      title: 'Success',
+    };
+  }
+
   @ApiOperation({ summary: 'Update Enrollment Detail' })
   @Put(':id')
   @HttpCode(HttpStatus.CREATED)
