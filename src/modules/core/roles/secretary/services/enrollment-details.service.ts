@@ -5,11 +5,19 @@ import {
   FilterEnrollmentsDetailDto,
   UpdateEnrollmentsDetailDto,
 } from '@modules/core/roles/secretary/dto';
-import { CatalogueEntity, EnrollmentDetailEntity, EnrollmentEntity } from '@modules/core/entities';
-import { CatalogueEnrollmentStateEnum, CatalogueCoreTypeEnum, CoreRepositoryEnum } from '@modules/core/shared-core/enums';
+import { CatalogueEntity, EnrollmentDetailEntity, EnrollmentDetailStateEntity, EnrollmentEntity } from '@modules/core/entities';
+import {
+  CatalogueEnrollmentStateEnum,
+  CatalogueCoreTypeEnum,
+  CatalogueEnrollmentsAcademicStateEnum,
+  CoreRepositoryEnum,
+} from '@modules/core/shared-core/enums';
 import { EnrollmentDetailStatesService } from '@modules/core/roles/secretary/services/enrollment-detail-states.service';
+import { EnrollmentStatesService } from '@modules/core/roles/secretary/services/enrollment-states.service';
 import { CoreCataloguesService } from '@modules/core/roles/secretary/services/core-catalogues.service';
 import { TeacherDistributionsStubService } from '@modules/core/roles/secretary/services/_stubs/teacher-distributions.stub.service';
+import { SubjectsStubService } from '@modules/core/roles/secretary/services/_stubs/subjects.stub.service';
+import { SchoolPeriodsService } from '@modules/core/roles/secretary/services/school-periods.service';
 import { ServiceResponseHttpInterface } from '@utils/interfaces';
 
 @Injectable()
@@ -24,6 +32,15 @@ export class EnrollmentDetailsService {
     private readonly enrollmentDetailStatesService: EnrollmentDetailStatesService,
     private readonly cataloguesService: CoreCataloguesService,
     private readonly teacherDistributionsService: TeacherDistributionsStubService,
+    private readonly subjectsService: SubjectsStubService,
+    // Solo se usa para saber cuál es el período lectivo abierto actualmente, al
+    // validar que no se edite una asignatura de un período ya cerrado.
+    private readonly schoolPeriodsService: SchoolPeriodsService,
+    // cascada de estados asignatura → matrícula. Solo se
+    // usa para tocar el estado de la matrícula padre directo (removeAll + create),
+    // sin llamar nunca al enrollmentsService.approve()/enroll()/etc — así se evita
+    // por completo el riesgo de ciclo 
+    private readonly enrollmentsStateService: EnrollmentStatesService,
   ) { }
 
   // ─── CRUD y flujo de solicitud ─────────────────────────────────────────────────
@@ -39,7 +56,7 @@ export class EnrollmentDetailsService {
       throw new BadRequestException('La asignatura ya existe, por favor ingrese otra');
     }
 
-    // limite de matriculas
+    // FIX: antes esto solo se topaba visualmente en el front (Math.min(count+1, 3)),
     const enrollment = await this.enrollmentRepository.findOneBy({ id: payload.enrollmentId });
 
     if (!enrollment) {
@@ -52,8 +69,7 @@ export class EnrollmentDetailsService {
       throw new BadRequestException('El estudiante ya alcanzó el límite de 3 matrículas para esta asignatura');
     }
 
-    // una matrícula solo puede tener UNA asignatura
-    // "activa" a la vez — no varias simultáneas.
+    // una matrícula solo puede tener una asignatura "activa" a la vez
     const catalogues = await this.cataloguesService.findCache();
 
     const revokedState = catalogues.find(
@@ -76,6 +92,29 @@ export class EnrollmentDetailsService {
       );
     }
 
+    // cupo real por asignatura+paralelo+jornada+período,
+    const teacherDistribution = await this.teacherDistributionsService.findBySubjectParallelWorkdaySchoolPeriod(
+      payload.subject.id,
+      payload.parallel.id,
+      payload.workday.id,
+      enrollment.schoolPeriodId,
+    );
+
+    if (!teacherDistribution) {
+      throw new BadRequestException('No se encontró una distribución docente para la asignatura seleccionada.');
+    }
+
+    const enrolledCount = await this.countStudentsInSubject(
+      payload.subject.id,
+      payload.parallel.id,
+      payload.workday.id,
+      enrollment.schoolPeriodId,
+    );
+
+    if (teacherDistribution.capacity !== null && enrolledCount >= teacherDistribution.capacity) {
+      throw new BadRequestException('No existen cupos disponibles para la asignatura seleccionada.');
+    }
+
     const newEnrollmentDetail = this.repository.create();
 
     newEnrollmentDetail.enrollmentId = payload.enrollmentId;
@@ -86,7 +125,30 @@ export class EnrollmentDetailsService {
     newEnrollmentDetail.typeId = payload.type.id;
     newEnrollmentDetail.workdayId = payload.workday.id;
 
-    return await this.repository.save(newEnrollmentDetail);
+    const savedEnrollmentDetail = await this.repository.save(newEnrollmentDetail);
+
+    // la matrícula limitada a 1 asignatura activa a la
+    // vez, sus campos compartidos (tipo, paralelo, horario, periodo académico)
+    const subject = await this.subjectsService.findOne(payload.subject.id);
+    enrollment.typeId = payload.type.id;
+    enrollment.parallelId = payload.parallel.id;
+    enrollment.workdayId = payload.workday.id;
+    enrollment.academicPeriodId = subject.academicPeriodId;
+    await this.enrollmentRepository.save(enrollment);
+
+    const requestSentState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REQUEST_SENT && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    )!;
+
+    await this.enrollmentDetailStatesService.create({
+      enrollmentDetailId: savedEnrollmentDetail.id,
+      stateId: requestSentState.id,
+      userId,
+      date: new Date(),
+      observation: payload.observation,
+    });
+
+    return savedEnrollmentDetail;
   }
 
   async sendRequest(userId: string, enrollmentDetailId: string, payload: CreateEnrollmentsDetailDto): Promise<EnrollmentDetailEntity> {
@@ -141,10 +203,35 @@ export class EnrollmentDetailsService {
   }
 
   async update(id: string, payload: UpdateEnrollmentsDetailDto): Promise<EnrollmentDetailEntity> {
-    const enrollmentDetail = await this.repository.findOneBy({ id });
+    const enrollmentDetail = await this.repository.findOne({
+      relations: { academicState: true },
+      where: { id },
+    });
 
     if (!enrollmentDetail) {
       throw new NotFoundException('Detalle de matrícula no encontrado');
+    }
+
+    // el front ya bloquea esto visualmente (isReadOnly en
+    // enrollment-detail-form), pero el backend nunca lo revisaba 
+    const parentEnrollment = await this.enrollmentRepository.findOne({
+      relations: { enrollmentState: { state: true } },
+      where: { id: enrollmentDetail.enrollmentId },
+    });
+
+    if (parentEnrollment) {
+      const openPeriod = await this.schoolPeriodsService.findOpenSchoolPeriod();
+      const isOpenPeriod = !openPeriod || parentEnrollment.schoolPeriodId === openPeriod.id;
+
+      const parentCode = parentEnrollment.enrollmentState?.state?.code;
+      const parentNotRevoked =
+        parentCode !== CatalogueEnrollmentStateEnum.REVOKED && parentCode !== CatalogueEnrollmentStateEnum.REJECTED;
+
+      if (!isOpenPeriod || !parentNotRevoked) {
+        throw new BadRequestException(
+          'No se puede editar una asignatura de un período cerrado o de una matrícula anulada/rechazada.',
+        );
+      }
     }
 
     if (payload.parallel) enrollmentDetail.parallelId = payload.parallel.id;
@@ -156,7 +243,52 @@ export class EnrollmentDetailsService {
     if (payload.finalAttendance) enrollmentDetail.finalAttendance = payload.finalAttendance;
     if (payload.academicState) enrollmentDetail.academicState = payload.academicState as CatalogueEntity;
 
-    return await this.repository.save(enrollmentDetail);
+    // el estado académico debe ser coherente con la nota y la asistencia
+    const effectiveAcademicStateId = payload.academicState?.id ?? enrollmentDetail.academicStateId;
+    let academicStateCode: string | undefined;
+
+    if (effectiveAcademicStateId) {
+      const catalogues = await this.cataloguesService.findCache();
+      academicStateCode = catalogues.find((c) => c.id === effectiveAcademicStateId)?.code;
+    }
+
+    const grade = enrollmentDetail.finalGrade;
+    const attendance = enrollmentDetail.finalAttendance;
+    const MIN_APPROVING_GRADE = 7;
+    const MIN_APPROVING_ATTENDANCE = 70;
+
+    if (academicStateCode && grade !== null && grade !== undefined && attendance !== null && attendance !== undefined) {
+      const meetsApprovingMinimums = grade >= MIN_APPROVING_GRADE && attendance >= MIN_APPROVING_ATTENDANCE;
+
+      if (academicStateCode === CatalogueEnrollmentsAcademicStateEnum.APPROVED && !meetsApprovingMinimums) {
+        throw new BadRequestException(
+          `No se puede marcar "Aprobado" con una calificación menor a ${MIN_APPROVING_GRADE} o asistencia menor al ${MIN_APPROVING_ATTENDANCE}%`,
+        );
+      }
+
+      if (academicStateCode === CatalogueEnrollmentsAcademicStateEnum.REPROVED && meetsApprovingMinimums) {
+        throw new BadRequestException(
+          'No se puede marcar "Reprobado" con una calificación y asistencia que cumplen el mínimo para aprobar',
+        );
+      }
+    }
+
+    const savedEnrollmentDetail = await this.repository.save(enrollmentDetail);
+
+    // mantener sincronizados los campos compartidos con la matrícula.
+    // asignatura (subject) no cambia al editar — solo tipo/paralelo/horario.
+    if (payload.parallel || payload.type || payload.workday) {
+      const enrollment = await this.enrollmentRepository.findOneBy({ id: enrollmentDetail.enrollmentId });
+
+      if (enrollment) {
+        if (payload.parallel) enrollment.parallelId = payload.parallel.id;
+        if (payload.type) enrollment.typeId = payload.type.id;
+        if (payload.workday) enrollment.workdayId = payload.workday.id;
+        await this.enrollmentRepository.save(enrollment);
+      }
+    }
+
+    return savedEnrollmentDetail;
   }
 
   async updateParallels(enrollmentId: string, parallelId: string): Promise<EnrollmentDetailEntity[]> {
@@ -192,12 +324,21 @@ export class EnrollmentDetailsService {
     return enrollmentDetails;
   }
 
-  async remove(id: string): Promise<EnrollmentDetailEntity> {
+  async remove(id: string, userId: string): Promise<EnrollmentDetailEntity> {
     const enrollmentDetail = await this.repository.findOneBy({ id });
 
     if (!enrollmentDetail) {
       throw new NotFoundException('enrollmentDetail not found');
     }
+
+    // eliminar la única asignatura activa retrocede la
+    // matrícula a "Aprobada"
+    await this.cascadeToParentEnrollment(
+      enrollmentDetail.enrollmentId,
+      CatalogueEnrollmentStateEnum.APPROVED,
+      userId,
+      'Retrocedida automáticamente — la asignatura activa fue eliminada',
+    );
 
     return await this.repository.softRemove(enrollmentDetail);
   }
@@ -233,6 +374,7 @@ export class EnrollmentDetailsService {
   }
 
   private getOffset(limit: number, page: number): number {
+    // Ver nota equivalente en enrollments.service.ts — PaginationDto.getOffset() ya no existe.
     const safePage = !page || page < 1 ? 1 : page;
     return (safePage - 1) * (limit || 10);
   }
@@ -270,6 +412,99 @@ export class EnrollmentDetailsService {
     return total.length;
   }
 
+  // cuenta cuántos estudiantes ya ocupan cupo real en una asignatura+paralelo+jornada+período
+  async countStudentsInSubject(subjectId: string, parallelId: string, workdayId: string, schoolPeriodId: string): Promise<number> {
+    const catalogues = await this.cataloguesService.findCache();
+
+    const registeredState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.REGISTERED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    );
+
+    const enrolledState = catalogues.find(
+      (catalogue) => catalogue.code === CatalogueEnrollmentStateEnum.ENROLLED && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    );
+
+    if (!registeredState || !enrolledState) {
+      throw new BadRequestException('No se encontraron los estados de matrícula válidos');
+    }
+
+    const lastStateQuery = this.repository.manager
+      .createQueryBuilder()
+      .subQuery()
+      .select('DISTINCT ON (eds.enrollment_detail_id) eds.enrollment_detail_id', 'enrollment_detail_id')
+      .addSelect('eds.state_id', 'state_id')
+      .from(EnrollmentDetailStateEntity, 'eds')
+      .where('eds.deleted_at IS NULL')
+      .orderBy('eds.enrollment_detail_id')
+      .addOrderBy('eds.created_at', 'DESC')
+      .getQuery();
+
+    const result = await this.repository
+      .createQueryBuilder('detail')
+      .innerJoin('detail.enrollment', 'enrollment')
+      .innerJoin(`(${lastStateQuery})`, 'last_state', 'last_state.enrollment_detail_id = detail.id')
+      .where('detail.subjectId = :subjectId', { subjectId })
+      .andWhere('detail.parallelId = :parallelId', { parallelId })
+      .andWhere('detail.workdayId = :workdayId', { workdayId })
+      .andWhere('enrollment.schoolPeriodId = :schoolPeriodId', { schoolPeriodId })
+      .andWhere('last_state.state_id IN (:...states)', { states: [registeredState.id, enrolledState.id] })
+      .select('COUNT(DISTINCT detail.id)', 'count')
+      .getRawOne<{ count: string }>();
+
+    return Number(result?.count ?? 0);
+  }
+
+  // ─── Validación de transiciones de estado ──────────────────────────────────
+  private readonly allowedStateTransitions: Record<string, string[]> = {
+    [CatalogueEnrollmentStateEnum.REGISTERED]: ['approve', 'reject'],
+    [CatalogueEnrollmentStateEnum.REQUEST_SENT]: ['approve', 'reject'],
+    [CatalogueEnrollmentStateEnum.APPROVED]: ['enroll', 'reject'],
+    [CatalogueEnrollmentStateEnum.ENROLLED]: ['revoke', 'approve'],
+    [CatalogueEnrollmentStateEnum.REJECTED]: ['approve'],
+    [CatalogueEnrollmentStateEnum.REVOKED]: ['enroll'],
+  };
+
+  private validateStateTransition(currentCode: string | undefined, action: 'approve' | 'reject' | 'enroll' | 'revoke'): void {
+    if (!currentCode) return;
+
+    const allowed = this.allowedStateTransitions[currentCode] ?? [];
+
+    if (!allowed.includes(action)) {
+      throw new BadRequestException(`No se puede pasar del estado "${currentCode}" a la acción "${action}"`);
+    }
+  }
+
+  // cascada de estados asignatura → matrícula.
+  private async cascadeToParentEnrollment(
+    enrollmentId: string,
+    targetStateCode: string,
+    userId: string,
+    observation: string | null | undefined,
+  ): Promise<void> {
+    const enrollment = await this.enrollmentRepository.findOne({
+      relations: { enrollmentStates: true },
+      where: { id: enrollmentId },
+    });
+
+    if (!enrollment) return;
+
+    const catalogues = await this.cataloguesService.findCache();
+
+    const targetState = catalogues.find(
+      (catalogue) => catalogue.code === targetStateCode && catalogue.type === CatalogueCoreTypeEnum.enrollments_state,
+    )!;
+
+    await this.enrollmentsStateService.removeAll(enrollment.enrollmentStates);
+
+    await this.enrollmentsStateService.create({
+      enrollmentId: enrollment.id,
+      stateId: targetState.id,
+      userId: userId,
+      date: new Date(),
+      observation: observation ?? '',
+    });
+  }
+
   // ─── Acciones de estado (misma lógica que Enrollments, a nivel de asignatura) ──
   async approve(id: string, userId: string, payload: UpdateEnrollmentsDetailDto): Promise<EnrollmentDetailEntity> {
     const enrollmentDetail = await this.repository.findOne({
@@ -280,6 +515,8 @@ export class EnrollmentDetailsService {
     if (!enrollmentDetail) {
       throw new NotFoundException('Detalle Matrícula no encontrado');
     }
+
+    this.validateStateTransition(enrollmentDetail.enrollmentDetailStates?.[0]?.state?.code, 'approve');
 
     const catalogues = await this.cataloguesService.findCache();
 
@@ -297,6 +534,8 @@ export class EnrollmentDetailsService {
       observation: payload.observation,
     });
 
+    await this.cascadeToParentEnrollment(enrollmentDetail.enrollmentId, CatalogueEnrollmentStateEnum.APPROVED, userId, payload.observation);
+
     return enrollmentDetail;
   }
 
@@ -309,6 +548,8 @@ export class EnrollmentDetailsService {
     if (!enrollmentDetail) {
       throw new NotFoundException('Matrícula no encontrada');
     }
+
+    this.validateStateTransition(enrollmentDetail.enrollmentDetailStates?.[0]?.state?.code, 'reject');
 
     const catalogues = await this.cataloguesService.findCache();
 
@@ -326,18 +567,24 @@ export class EnrollmentDetailsService {
       observation: payload.observation,
     });
 
+    // Rechazar la asignatura NO copia "Rechazada" a la matrícula (ese estado
+    // bloquearía "Crear") — retrocede a Aprobada, igual que Anular/Eliminar.
+    await this.cascadeToParentEnrollment(enrollmentDetail.enrollmentId, CatalogueEnrollmentStateEnum.APPROVED, userId, payload.observation);
+
     return enrollmentDetail;
   }
 
   async enroll(id: string, userId: string, payload: UpdateEnrollmentsDetailDto): Promise<EnrollmentDetailEntity> {
     const enrollmentDetail = await this.repository.findOne({
-      relations: { enrollmentDetailStates: true },
+      relations: { enrollmentDetailStates: { state: true } },
       where: { id },
     });
 
     if (!enrollmentDetail) {
       throw new NotFoundException('Detalle de matrícula no encontrado');
     }
+
+    this.validateStateTransition(enrollmentDetail.enrollmentDetailStates?.[0]?.state?.code, 'enroll');
 
     enrollmentDetail.date = new Date();
 
@@ -359,18 +606,22 @@ export class EnrollmentDetailsService {
       observation: payload.observation,
     });
 
+    await this.cascadeToParentEnrollment(enrollmentDetail.enrollmentId, CatalogueEnrollmentStateEnum.ENROLLED, userId, payload.observation);
+
     return enrollmentDetail;
   }
 
   async revoke(id: string, userId: string, payload: UpdateEnrollmentsDetailDto): Promise<EnrollmentDetailEntity> {
     const enrollmentDetail = await this.repository.findOne({
-      relations: { enrollmentDetailStates: true },
+      relations: { enrollmentDetailStates: { state: true } },
       where: { id },
     });
 
     if (!enrollmentDetail) {
       throw new NotFoundException('Detalle de matrícula no encontrado');
     }
+
+    this.validateStateTransition(enrollmentDetail.enrollmentDetailStates?.[0]?.state?.code, 'revoke');
 
     const catalogues = await this.cataloguesService.findCache();
 
@@ -387,6 +638,10 @@ export class EnrollmentDetailsService {
       date: new Date(),
       observation: payload.observation,
     });
+
+    // Anular la asignatura NO copia "Anulada" a la matrícula (bloquearía "Crear")
+    // — retrocede a Aprobada, para que Secretaría pueda crear la reemplazante.
+    await this.cascadeToParentEnrollment(enrollmentDetail.enrollmentId, CatalogueEnrollmentStateEnum.APPROVED, userId, payload.observation);
 
     return enrollmentDetail;
   }

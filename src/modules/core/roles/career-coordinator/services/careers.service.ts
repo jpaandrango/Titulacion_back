@@ -19,7 +19,7 @@ export class CareersService {
     @Inject(ConfigEnum.PG_DATA_SOURCE) private readonly dataSource: DataSource,
     @Inject(CoreRepositoryEnum.careerRepository) private repository: Repository<CareerEntity>,
     @Inject(AuthRepositoryEnum.userRepository) private userRepository: Repository<UserEntity>,
-  ) {}
+  ) { }
 
   async findAll(params: FilterCareerDto) {
     const query = this.repository.createQueryBuilder('career');
@@ -157,7 +157,7 @@ export class CareersService {
 
   async findSubjectsByCareer(id: string): Promise<SubjectEntity[]> {
     const entity = await this.repository.findOne({
-      relations: { subjects: true },
+      relations: { subjects: { academicPeriod: true } },   // ← agregado
       where: {
         id,
       },

@@ -30,4 +30,7 @@ export class FilterEnrollmentDto extends OmitType(PaginationDto, ['page'] as con
 
   @IsOptional()
   readonly enrollmentStateId: string;
+
+  @IsOptional()
+  readonly subjectId: string;
 }
